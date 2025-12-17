@@ -34,6 +34,7 @@ bash scripts/gitops/09_verify.sh
 
 - `scripts/gitops/01_preflight.sh`는 기본값으로 필수 패키지(`curl/jq/openssl/git` 등)를 `apt-get`으로 설치하려고 시도합니다.
 - 폐쇄망이면 `scripts/gitops/config.env`에서 `AUTO_INSTALL_PREREQS=false`로 두고, 필요한 패키지를 수동 설치 후 진행하세요.
+- Ubuntu 24.04에서는 `docker-compose-plugin` 패키지가 없을 수 있어, `scripts/gitops/02_install_docker.sh`가 `docker-compose-v2`를 우선 사용합니다.
 
 ## 문서
 

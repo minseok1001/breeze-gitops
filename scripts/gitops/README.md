@@ -35,3 +35,8 @@ bash 09_verify.sh
 - `.secrets/` : 비밀번호/토큰 등 비밀(커밋 금지)
 - `.state/` : 생성된 리소스 ID/URL 등 상태 파일
 - `.logs/` : 실행 로그
+
+## 3) Docker 설치 관련(자주 발생)
+
+- Ubuntu 24.04에서는 `docker-compose-plugin` 패키지가 없을 수 있어 `docker-compose-v2`를 우선 설치합니다.
+- `02_install_docker.sh`는 “ubuntu 패키지 설치 실패” 시 Docker 공식 APT repo 설치를 자동으로 재시도합니다.

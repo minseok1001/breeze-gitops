@@ -46,6 +46,8 @@
 
 ## 5) 가장 흔한 이슈
 
+- Docker 설치에서 `docker-compose-plugin`을 찾지 못함
+  - Ubuntu 24.04에서 흔한 케이스이며, 스크립트는 `docker-compose-v2`를 우선 설치하도록 되어 있습니다.
 - preflight에서 apt 설치가 실패함
   - 기본은 `AUTO_INSTALL_PREREQS=true`로 `apt-get install`을 시도합니다(온라인 필요).
   - 폐쇄망이면 `AUTO_INSTALL_PREREQS=false`로 두고, 필요한 패키지를 수동으로 설치한 뒤 진행하세요.
