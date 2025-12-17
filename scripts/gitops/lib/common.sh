@@ -23,8 +23,26 @@ ensure_dirs() {
 load_config() {
   local config_file="${1:-$SCRIPT_DIR/config.env}"
   [[ -f "$config_file" ]] || die "설정 파일이 없습니다: $config_file (config.env.example를 복사해서 생성하세요)"
+  export LOADED_CONFIG_FILE="$config_file"
+  # CRLF로 저장되면 bash가 변수 파싱을 엉뚱하게 할 수 있습니다.
+  if LC_ALL=C grep -q $'\r' "$config_file" 2>/dev/null; then
+    warn "설정 파일에 CRLF(\\r) 문자가 있습니다: $config_file (LF로 변환 권장)"
+  fi
   # shellcheck disable=SC1090
   source "$config_file"
+}
+
+is_true() {
+  [[ "${1:-}" == "true" ]]
+}
+
+validate_bool() {
+  local name="$1"
+  local value="${2:-}"
+  case "$value" in
+    true|false) return 0 ;;
+    *) die "${name} 값이 올바르지 않습니다: '${value}' (true 또는 false만 허용)" ;;
+  esac
 }
 
 normalize_url() {
@@ -63,4 +81,3 @@ gitlab_api() {
   local url="http://${SERVER_IP}:${GITLAB_HTTP_PORT}/api/v4${path}"
   curl -fsS -X "$method" -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$@" "$url"
 }
-

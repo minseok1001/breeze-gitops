@@ -28,7 +28,7 @@
 
 ## 3) 실행 순서(가장 중요)
 
-1. `scripts/gitops/config.env` 작성
+1. `scripts/gitops/config.env` 작성 (`config.env.example`를 수정하는 게 아니라, 꼭 `config.env`를 생성/수정)
 2. `01_preflight.sh` (환경 점검 + 신규 인스턴스 필수 패키지 설치 점검)
 3. `02_install_docker.sh` (Docker 없으면 설치)
 4. `03_deploy_gitlab.sh` (선택)

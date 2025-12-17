@@ -11,6 +11,10 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 ensure_dirs
 load_config
+validate_bool "AUTO_INSTALL_PREREQS" "${AUTO_INSTALL_PREREQS:-}"
+validate_bool "ENABLE_GITLAB" "${ENABLE_GITLAB:-false}"
+validate_bool "ENABLE_HARBOR" "${ENABLE_HARBOR:-false}"
+validate_bool "ENABLE_DEMO_APP" "${ENABLE_DEMO_APP:-true}"
 
 LOG_FILE="$SCRIPT_DIR/.logs/01_preflight_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -25,6 +29,7 @@ fi
 [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP를 감지하지 못했습니다. scripts/gitops/config.env에 직접 입력하세요."
 
 log "사전 점검 시작"
+log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "SERVER_IP=$SERVER_IP"
 
 log "OS/커널 정보"

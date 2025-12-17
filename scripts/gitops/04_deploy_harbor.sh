@@ -11,13 +11,17 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 ensure_dirs
-load_config
-
 LOG_FILE="$SCRIPT_DIR/.logs/04_deploy_harbor_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-if [[ "${ENABLE_HARBOR:-false}" != "true" ]]; then
-  log "ENABLE_HARBOR=false → Harbor 배포를 건너뜁니다."
+load_config
+validate_bool "ENABLE_HARBOR" "${ENABLE_HARBOR:-}"
+
+log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
+log "ENABLE_HARBOR=${ENABLE_HARBOR:-}"
+
+if ! is_true "${ENABLE_HARBOR:-false}"; then
+  log "ENABLE_HARBOR=false → Harbor 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_HARBOR=\"true\"로 변경)"
   exit 0
 fi
 
@@ -154,4 +158,3 @@ done
 log "Harbor URL: $HARBOR_URL"
 log "admin 비밀번호 파일: scripts/gitops/.secrets/harbor_admin_password"
 log "완료 (로그: $LOG_FILE)"
-

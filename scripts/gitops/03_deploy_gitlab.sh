@@ -11,13 +11,17 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 ensure_dirs
-load_config
-
 LOG_FILE="$SCRIPT_DIR/.logs/03_deploy_gitlab_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-if [[ "${ENABLE_GITLAB:-false}" != "true" ]]; then
-  log "ENABLE_GITLAB=false → GitLab 배포를 건너뜁니다."
+load_config
+validate_bool "ENABLE_GITLAB" "${ENABLE_GITLAB:-}"
+
+log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
+log "ENABLE_GITLAB=${ENABLE_GITLAB:-}"
+
+if ! is_true "${ENABLE_GITLAB:-false}"; then
+  log "ENABLE_GITLAB=false → GitLab 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_GITLAB=\"true\"로 변경)"
   exit 0
 fi
 
