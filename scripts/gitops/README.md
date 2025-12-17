@@ -1,0 +1,37 @@
+# GitOps 스크립트 묶음
+
+목표: 단일 서버에서 **GitOps에 필요한 최소 구성(k3s + Argo CD)**만 빠르게 올립니다.  
+필요하면 GitLab/Harbor도 같이 올릴 수 있습니다(옵션).
+
+## 0) 설정
+
+```bash
+cp config.env.example config.env
+vi config.env
+```
+
+### 신규 인스턴스에서 필수 패키지 자동 설치
+
+- 기본값은 `AUTO_INSTALL_PREREQS=true`이며, `01_preflight.sh`에서 `apt-get install`을 시도합니다(온라인 필요).
+- 폐쇄망이면 `AUTO_INSTALL_PREREQS=false`로 두고, `curl/jq/openssl/git` 등을 수동 설치한 뒤 진행하세요.
+
+## 1) 실행 순서(번호 순서 고정)
+
+```bash
+bash 01_preflight.sh
+bash 02_install_docker.sh
+bash 03_deploy_gitlab.sh
+bash 04_deploy_harbor.sh
+bash 05_install_k3s.sh
+bash 06_install_argocd.sh
+bash 07_bootstrap_git_repo.sh
+bash 08_bootstrap_argocd.sh
+bash 09_verify.sh
+```
+
+## 2) 파일/디렉토리 설명
+
+- `config.env` : 사용자 설정(커밋 금지)
+- `.secrets/` : 비밀번호/토큰 등 비밀(커밋 금지)
+- `.state/` : 생성된 리소스 ID/URL 등 상태 파일
+- `.logs/` : 실행 로그
