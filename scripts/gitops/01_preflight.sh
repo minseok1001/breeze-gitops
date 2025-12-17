@@ -74,6 +74,19 @@ df -h / || true
 free -h || true
 nproc 2>/dev/null || true
 
+# GitLab은 매우 무겁습니다. (최소 4GB, 권장 8GB+)
+if [[ "${ENABLE_GITLAB:-false}" == "true" ]] && command -v free >/dev/null 2>&1; then
+  mem_mb="$(free -m | awk '/Mem:/{print $2}' | tr -d '\r')"
+  if [[ -n "${mem_mb:-}" ]]; then
+    if (( mem_mb < 4096 )); then
+      warn "메모리가 ${mem_mb}MB 입니다. GitLab은 최소 4GB 이상을 권장합니다(부팅이 매우 느리거나 unhealthy가 날 수 있음)."
+      warn "가능하면 인스턴스 스펙 업그레이드 또는 swap 구성 후 진행하세요."
+    elif (( mem_mb < 8192 )); then
+      warn "메모리가 ${mem_mb}MB 입니다. GitLab은 8GB 이상이 더 안정적입니다."
+    fi
+  fi
+fi
+
 log "포트 점유 확인"
 if command -v ss >/dev/null 2>&1; then
   sudo ss -lntup | egrep ":${GITLAB_HTTP_PORT}|:${HARBOR_HTTP_PORT}|:${ARGOCD_NODEPORT_HTTPS}|:6443" || true

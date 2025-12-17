@@ -21,6 +21,11 @@
 - Git 저장소: GitLab (Docker 컨테이너)
 - 레지스트리: Harbor (오프라인 installer 기반 설치 권장)
 
+## 2.1) GitLab 리소스 가이드(중요)
+
+- GitLab은 초기 설치/DB 마이그레이션 때문에 **처음 기동이 오래 걸릴 수 있습니다(10~30분+)**.
+- 최소 4GB RAM, 권장 8GB+ 입니다. 메모리가 작으면 `unhealthy/502`가 반복될 수 있습니다.
+
 ## 3) 실행 순서(가장 중요)
 
 1. `scripts/gitops/config.env` 작성
@@ -46,6 +51,10 @@
 
 ## 5) 가장 흔한 이슈
 
+- GitLab이 `unhealthy`이고 502(badgateway)가 계속 뜸
+  - 대부분 메모리 부족/초기 마이그레이션 지연입니다. 먼저 `free -h`로 메모리 확인 후 충분히 기다려보세요.
+  - 계속 실패하면 `docker exec -it gitlab gitlab-ctl status` 및 `gitlab-ctl tail puma`로 원인 확인이 필요합니다.
+  - PostgreSQL이 shared memory 관련으로 죽는 경우가 있어, `GITLAB_SHM_SIZE=1g` 이상으로 올려 재시도해볼 수 있습니다.
 - Docker 설치에서 `docker-compose-plugin`을 찾지 못함
   - Ubuntu 24.04에서 흔한 케이스이며, 스크립트는 `docker-compose-v2`를 우선 설치하도록 되어 있습니다.
 - preflight에서 apt 설치가 실패함
