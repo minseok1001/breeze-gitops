@@ -15,6 +15,8 @@ validate_bool "AUTO_INSTALL_PREREQS" "${AUTO_INSTALL_PREREQS:-}"
 validate_bool "ENABLE_GITLAB" "${ENABLE_GITLAB:-false}"
 validate_bool "ENABLE_HARBOR" "${ENABLE_HARBOR:-false}"
 validate_bool "ENABLE_DEMO_APP" "${ENABLE_DEMO_APP:-true}"
+validate_bool "GITLAB_PERSIST_DATA" "${GITLAB_PERSIST_DATA:-false}"
+validate_bool "GITLAB_APPLY_OMNIBUS_CONFIG" "${GITLAB_APPLY_OMNIBUS_CONFIG:-false}"
 
 LOG_FILE="$SCRIPT_DIR/.logs/01_preflight_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -94,7 +96,7 @@ fi
 
 log "포트 점유 확인"
 if command -v ss >/dev/null 2>&1; then
-  sudo ss -lntup | egrep ":${GITLAB_HTTP_PORT}|:${HARBOR_HTTP_PORT}|:${ARGOCD_NODEPORT_HTTPS}|:6443" || true
+  sudo ss -lntup | egrep ":${GITLAB_HTTP_PORT:-8080}|:${GITLAB_SSH_PORT:-2222}|:${HARBOR_HTTP_PORT:-8084}|:${ARGOCD_NODEPORT_HTTPS:-30443}|:6443" || true
 else
   warn "ss 명령이 없어 포트 점유 확인을 건너뜁니다."
 fi

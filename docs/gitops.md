@@ -26,6 +26,12 @@
 - GitLab은 초기 설치/DB 마이그레이션 때문에 **처음 기동이 오래 걸릴 수 있습니다(10~30분+)**.
 - 최소 4GB RAM, 권장 8GB+ 입니다. 메모리가 작으면 `unhealthy/502`가 반복될 수 있습니다.
 
+## 2.2) GitLab 배포 모드(중요)
+
+- 기본은 “최소 구성”으로 띄웁니다(볼륨/추가 설정 최소화 → 실패 확률 낮음).
+- 데이터 유지가 필요하면 `scripts/gitops/config.env`에서 `GITLAB_PERSIST_DATA=true`로 켜세요.
+- GitLab 링크/클론 URL이 이상하면 `GITLAB_APPLY_OMNIBUS_CONFIG=true`로 켜고, 필요 시 `GITLAB_EXTERNAL_URL`에 공인 IP/도메인을 넣으세요.
+
 ## 3) 실행 순서(가장 중요)
 
 1. `scripts/gitops/config.env` 작성 (`config.env.example`를 수정하는 게 아니라, 꼭 `config.env`를 생성/수정)
@@ -55,6 +61,7 @@
   - 대부분 메모리 부족/초기 마이그레이션 지연입니다. 먼저 `free -h`로 메모리 확인 후 충분히 기다려보세요.
   - 계속 실패하면 `docker exec -it gitlab gitlab-ctl status` 및 `gitlab-ctl tail puma`로 원인 확인이 필요합니다.
   - PostgreSQL이 shared memory 관련으로 죽는 경우가 있어, `GITLAB_SHM_SIZE=1g` 이상으로 올려 재시도해볼 수 있습니다.
+  - 이전 데이터(볼륨)가 꼬인 경우, `GITLAB_PERSIST_DATA=false`(최소 구성)로 먼저 확인하거나 `DATA_DIR/gitlab` 초기화가 필요할 수 있습니다.
 - Docker 설치에서 `docker-compose-plugin`을 찾지 못함
   - Ubuntu 24.04에서 흔한 케이스이며, 스크립트는 `docker-compose-v2`를 우선 설치하도록 되어 있습니다.
 - preflight에서 apt 설치가 실패함

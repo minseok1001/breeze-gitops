@@ -30,6 +30,8 @@ bash scripts/gitops/08_bootstrap_argocd.sh
 bash scripts/gitops/09_verify.sh
 ```
 
+> GitLab/Harbor는 기본값이 비활성화되어 있습니다. 사용하려면 `scripts/gitops/config.env`에서 `ENABLE_GITLAB=true` / `ENABLE_HARBOR=true`로 켜세요.
+
 ## 신규 인스턴스(깨끗한 Ubuntu)에서 주의
 
 - `scripts/gitops/01_preflight.sh`는 기본값으로 필수 패키지(`curl/jq/openssl/git` 등)를 `apt-get`으로 설치하려고 시도합니다.

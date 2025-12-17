@@ -27,7 +27,14 @@ fi
 
 require_cmd docker
 require_cmd curl
-require_cmd jq
+
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE=(docker-compose)
+else
+  die "docker compose를 찾지 못했습니다. (02_install_docker.sh를 먼저 실행하세요)"
+fi
 
 if [[ -z "${SERVER_IP:-}" ]]; then
   SERVER_IP="$(detect_server_ip)"
@@ -41,35 +48,28 @@ GITLAB_SHM_SIZE="${GITLAB_SHM_SIZE:-1g}"
 log "GitLab 배포 시작"
 log "DATA_DIR=$DATA_DIR"
 
-# 루트 비밀번호 준비(출력 금지, 재실행 시 기존 값 재사용)
+GITLAB_PERSIST_DATA="${GITLAB_PERSIST_DATA:-false}"
+GITLAB_APPLY_OMNIBUS_CONFIG="${GITLAB_APPLY_OMNIBUS_CONFIG:-false}"
+validate_bool "GITLAB_PERSIST_DATA" "$GITLAB_PERSIST_DATA"
+validate_bool "GITLAB_APPLY_OMNIBUS_CONFIG" "$GITLAB_APPLY_OMNIBUS_CONFIG"
+
 pw_file="$SCRIPT_DIR/.secrets/gitlab_root_password"
-if [[ -z "${GITLAB_ROOT_PASSWORD:-}" ]]; then
-  if [[ -f "$pw_file" ]]; then
-    GITLAB_ROOT_PASSWORD="$(cat "$pw_file")"
-    log "기존 GitLab root 비밀번호 파일을 재사용합니다: scripts/gitops/.secrets/gitlab_root_password"
-  else
-    GITLAB_ROOT_PASSWORD="$(random_password)"
-    write_secret_file "$pw_file" "$GITLAB_ROOT_PASSWORD"
-    log "GitLab root 비밀번호를 생성하여 저장했습니다: scripts/gitops/.secrets/gitlab_root_password"
-  fi
-else
+if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
+  # 사용자가 직접 지정한 경우에만 env로 주입(그 외에는 GitLab 기본 동작을 최대한 그대로 둠)
   write_secret_file "$pw_file" "$GITLAB_ROOT_PASSWORD"
   log "GitLab root 비밀번호를 저장했습니다: scripts/gitops/.secrets/gitlab_root_password"
+else
+  if [[ -f "$pw_file" ]]; then
+    log "기존 GitLab root 비밀번호 파일이 있습니다: scripts/gitops/.secrets/gitlab_root_password"
+  fi
 fi
 
-sudo mkdir -p "$DATA_DIR/gitlab/config" "$DATA_DIR/gitlab/logs" "$DATA_DIR/gitlab/data"
-sudo chown -R "$TARGET_USER":"$TARGET_USER" "$DATA_DIR/gitlab" || true
-
-# 리소스가 작은 인스턴스에서는 Puma 워커를 줄여야 Rails가 덜 죽습니다.
-extra_omnibus_config=""
-if command -v free >/dev/null 2>&1; then
-  mem_mb="$(free -m | awk '/Mem:/{print $2}' | tr -d '\r')"
-  if [[ -n "${mem_mb:-}" && "$mem_mb" =~ ^[0-9]+$ ]]; then
-    if (( mem_mb < 8192 )); then
-      extra_omnibus_config=$'puma[\'worker_processes\'] = 0\n'
-      log "메모리 ${mem_mb}MB 감지 → GitLab Puma 워커를 0(싱글 모드)으로 튜닝합니다."
-    fi
-  fi
+if [[ "$GITLAB_PERSIST_DATA" == "true" ]]; then
+  log "GitLab 볼륨 모드: ON (DATA_DIR에 데이터 유지)"
+  sudo mkdir -p "$DATA_DIR/gitlab/config" "$DATA_DIR/gitlab/logs" "$DATA_DIR/gitlab/data"
+  sudo chown -R "$TARGET_USER":"$TARGET_USER" "$DATA_DIR/gitlab" || true
+else
+  log "GitLab 볼륨 모드: OFF (최소 구성, 컨테이너 재생성 시 데이터 유실 가능)"
 fi
 
 COMPOSE_FILE="$SCRIPT_DIR/.state/gitlab.compose.yml"
@@ -81,23 +81,54 @@ services:
     hostname: gitlab
     shm_size: "${GITLAB_SHM_SIZE}"
     restart: unless-stopped
-    environment:
-      GITLAB_ROOT_PASSWORD: "${GITLAB_ROOT_PASSWORD}"
+EOF
+
+need_env="false"
+if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
+  need_env="true"
+fi
+if [[ "$GITLAB_APPLY_OMNIBUS_CONFIG" == "true" ]]; then
+  need_env="true"
+fi
+
+if [[ "$need_env" == "true" ]]; then
+  {
+    echo "    environment:"
+    if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
+      echo "      GITLAB_ROOT_PASSWORD: \"${GITLAB_ROOT_PASSWORD}\""
+    fi
+    if [[ "$GITLAB_APPLY_OMNIBUS_CONFIG" == "true" ]]; then
+      external_url="${GITLAB_EXTERNAL_URL:-}"
+      if [[ -z "$external_url" ]]; then
+        external_url="http://${SERVER_IP}:${GITLAB_HTTP_PORT}"
+      fi
+      external_url="$(normalize_url "$external_url")"
+      cat <<EOF
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://${SERVER_IP}:${GITLAB_HTTP_PORT}'
+        external_url '${external_url}'
         gitlab_rails['gitlab_shell_ssh_port'] = ${GITLAB_SSH_PORT}
-        ${extra_omnibus_config}
+EOF
+    fi
+  } >> "$COMPOSE_FILE"
+fi
+
+cat >> "$COMPOSE_FILE" <<EOF
     ports:
       - "${GITLAB_HTTP_PORT}:80"
       - "${GITLAB_SSH_PORT}:22"
+EOF
+
+if [[ "$GITLAB_PERSIST_DATA" == "true" ]]; then
+  cat >> "$COMPOSE_FILE" <<EOF
     volumes:
       - "${DATA_DIR}/gitlab/config:/etc/gitlab"
       - "${DATA_DIR}/gitlab/logs:/var/log/gitlab"
       - "${DATA_DIR}/gitlab/data:/var/opt/gitlab"
 EOF
+fi
 
 log "docker compose up -d"
-docker compose -p gitops-gitlab -f "$COMPOSE_FILE" up -d
+"${COMPOSE[@]}" -p gitops-gitlab -f "$COMPOSE_FILE" up -d
 
 timeout_sec="${GITLAB_STARTUP_TIMEOUT_SEC:-1800}"
 log "기동 확인(최대 ${timeout_sec}초 대기)"
@@ -125,7 +156,7 @@ fi
 if ! [[ "$final_code" =~ ^2|^3 ]]; then
   warn "GitLab이 준비 상태가 아닙니다. (HTTP $final_code, health=$final_health)"
   warn "아래 명령으로 원인 확인을 권장합니다:"
-  warn "  docker inspect -f '{{json .State.Health}}' gitlab | jq"
+  warn "  docker inspect -f '{{json .State.Health}}' gitlab"
   warn "  docker exec -it gitlab gitlab-ctl status"
   warn "  docker exec -it gitlab gitlab-ctl tail puma --lines 200"
   warn "  docker exec -it gitlab gitlab-ctl tail postgresql --lines 200"
@@ -135,6 +166,21 @@ if ! [[ "$final_code" =~ ^2|^3 ]]; then
   die "GitLab 기동 실패 또는 매우 지연됨"
 fi
 
+if [[ ! -s "$pw_file" ]]; then
+  log "GitLab 초기 root 비밀번호 추출 시도(출력 금지)"
+  extracted_pw="$(docker exec gitlab bash -lc "awk -F': ' '/Password:/{print \\$2; exit}' /etc/gitlab/initial_root_password 2>/dev/null || true" 2>/dev/null | tr -d '\r' || true)"
+  if [[ -n "${extracted_pw:-}" ]]; then
+    write_secret_file "$pw_file" "$extracted_pw"
+    log "GitLab root 비밀번호를 저장했습니다: scripts/gitops/.secrets/gitlab_root_password"
+  else
+    warn "root 비밀번호를 자동으로 추출하지 못했습니다."
+    warn "필요 시 다음으로 확인하세요:"
+    warn "  docker exec -it gitlab bash -lc 'cat /etc/gitlab/initial_root_password'"
+  fi
+fi
+
 log "GitLab URL: http://${SERVER_IP}:${GITLAB_HTTP_PORT}"
-log "root 비밀번호 파일: scripts/gitops/.secrets/gitlab_root_password"
+if [[ -s "$pw_file" ]]; then
+  log "root 비밀번호 파일: scripts/gitops/.secrets/gitlab_root_password"
+fi
 log "완료 (로그: $LOG_FILE)"
