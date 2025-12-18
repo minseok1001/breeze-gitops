@@ -95,9 +95,16 @@ project_full_path="${namespace_path}/${project_path}"
 project_path_enc="$(urlencode "$project_full_path")"
 
 log "프로젝트 확인/생성: $project_full_path"
-if project_json="$(gitlab_api GET "/projects/$project_path_enc" 2>/dev/null)"; then
+gitlab_base="$(gitlab_api_base_url)"
+project_url="${gitlab_base}/api/v4/projects/${project_path_enc}"
+tmp_resp="/tmp/gitlab_project_get.json"
+project_http="$(curl -sS -o "$tmp_resp" -w "%{http_code}" -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$project_url" || true)"
+
+if [[ "$project_http" == "200" ]]; then
+  project_json="$(cat "$tmp_resp")"
   project_id="$(echo "$project_json" | jq -r '.id')"
-else
+elif [[ "$project_http" == "404" ]]; then
+  log "프로젝트가 아직 없어 생성합니다."
   if [[ -n "$namespace_id" ]]; then
     project_json="$(gitlab_api POST "/projects" \
       --data-urlencode "name=$project_name" \
@@ -113,6 +120,22 @@ else
       --data-urlencode "visibility=private")"
   fi
   project_id="$(echo "$project_json" | jq -r '.id')"
+elif [[ "$project_http" == "403" ]]; then
+  warn "GitLab 프로젝트 조회가 403(FORBIDDEN) 입니다."
+  warn "가장 흔한 원인: GITLAB_TOKEN이 'api' scope가 아니라서 프로젝트 API 권한이 부족한 경우"
+  warn "대안:"
+  warn "  1) GitLab에서 Personal Access Token을 새로 만들고(scope: api 체크) scripts/gitops/config.env에 반영"
+  warn "  2) 토큰 사용자(root 등)가 해당 네임스페이스에 프로젝트 생성 권한이 있는지 확인"
+  warn "응답(body) 일부:"
+  head -c 500 "$tmp_resp" 2>/dev/null || true
+  echo
+  die "GitLab 프로젝트 조회 실패(HTTP 403): ${project_url}"
+else
+  warn "GitLab 프로젝트 조회 실패(HTTP $project_http): ${project_url}"
+  warn "응답(body) 일부:"
+  head -c 500 "$tmp_resp" 2>/dev/null || true
+  echo
+  die "GitLab 프로젝트 조회 실패"
 fi
 
 [[ -n "${project_id:-}" && "$project_id" != "null" ]] || die "프로젝트 ID를 확인할 수 없습니다."
