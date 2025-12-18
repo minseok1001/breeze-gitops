@@ -37,6 +37,11 @@ fi
 DATA_DIR="${DATA_DIR:-/srv/gitops-lab}"
 HARBOR_URL="http://${SERVER_IP}:${HARBOR_HTTP_PORT}"
 HARBOR_REGISTRY_HOSTPORT="${HARBOR_REGISTRY_HOSTPORT:-${SERVER_IP}:${HARBOR_HTTP_PORT}}"
+HARBOR_PROTOCOL="${HARBOR_PROTOCOL:-http}"
+case "$HARBOR_PROTOCOL" in
+  http|https) ;;
+  *) die "HARBOR_PROTOCOL 값이 올바르지 않습니다: '${HARBOR_PROTOCOL}' (http 또는 https만 허용)" ;;
+esac
 
 log "Harbor URL: $HARBOR_URL"
 log "Harbor Registry(host:port): $HARBOR_REGISTRY_HOSTPORT"
@@ -125,6 +130,7 @@ else
   warn "harbor.yml.tmpl을 찾지 못했습니다. 최소 설정 파일로 생성합니다(버전 차이에 취약할 수 있음)."
   sudo tee "$HARBOR_DIR/harbor.yml" >/dev/null <<EOF
 hostname: ${harbor_hostname}
+protocol: ${HARBOR_PROTOCOL}
 http:
   port: ${HARBOR_HTTP_PORT}
 harbor_admin_password: ${HARBOR_ADMIN_PASSWORD}
@@ -140,6 +146,7 @@ fi
 tmp_yaml="$SCRIPT_DIR/.state/harbor.yml.tmp_$(date +%Y%m%d_%H%M%S)"
 sudo awk \
   -v host="$harbor_hostname" \
+  -v proto="$HARBOR_PROTOCOL" \
   -v http_port="${HARBOR_HTTP_PORT}" \
   -v admin_pw="${HARBOR_ADMIN_PASSWORD}" \
   -v db_pw="${HARBOR_ADMIN_PASSWORD}" \
@@ -147,6 +154,7 @@ sudo awk \
   '
   BEGIN {in_http=0; in_db=0}
   /^hostname:/ {print "hostname: " host; next}
+  /^protocol:/ {print "protocol: " proto; next}
   /^http:/ {in_http=1; in_db=0; print; next}
   /^database:/ {in_db=1; in_http=0; print; next}
   /^data_volume:/ {print "data_volume: " data_vol; next}
@@ -161,13 +169,40 @@ sudo awk \
 sudo install -m 0644 "$tmp_yaml" "$HARBOR_DIR/harbor.yml"
 rm -f "$tmp_yaml"
 
+# 기본값은 ALB/외부 TLS 종료를 전제로 "http" 로 둡니다.
+# 만약 템플릿에 https 섹션이 활성화되어 있거나 protocol=https로 잡혀 있으면 설치가 실패할 수 있어,
+# HARBOR_PROTOCOL=http 인 경우 https 섹션은 강제로 비활성화(주석 처리)합니다.
+if [[ "$HARBOR_PROTOCOL" == "http" ]]; then
+  tmp_yaml="$SCRIPT_DIR/.state/harbor.yml.tmp_$(date +%Y%m%d_%H%M%S)"
+  sudo awk '
+    BEGIN {in_https=0}
+    /^[[:space:]]*https:[[:space:]]*$/ {
+      in_https=1
+      print "# https:"
+      next
+    }
+    {
+      if (in_https) {
+        if ($0 ~ /^[^[:space:]#]/) {in_https=0; print; next}
+        if ($0 ~ /^#/) {print; next}
+        if ($0 ~ /^$/) {print; next}
+        print "# " $0
+        next
+      }
+      print
+    }
+  ' "$HARBOR_DIR/harbor.yml" > "$tmp_yaml"
+  sudo install -m 0644 "$tmp_yaml" "$HARBOR_DIR/harbor.yml"
+  rm -f "$tmp_yaml"
+fi
+
 # Harbor v2.14.x에서 jobservice.max_job_workers가 없으면 prepare 단계가 실패할 수 있습니다.
 if sudo grep -q '^jobservice:' "$HARBOR_DIR/harbor.yml"; then
   if ! sudo awk '
-    BEGIN{in=0; found=0}
-    /^jobservice:/ {in=1; next}
-    /^[^[:space:]]/ {if(in){exit found?0:1}}
-    in && /^[[:space:]]+max_job_workers:/ {found=1}
+    BEGIN{in_section=0; found=0}
+    /^jobservice:/ {in_section=1; next}
+    /^[^[:space:]]/ {if(in_section){exit found?0:1}}
+    in_section && /^[[:space:]]+max_job_workers:/ {found=1}
     END{exit found?0:1}
   ' "$HARBOR_DIR/harbor.yml"; then
     log "jobservice.max_job_workers가 없어 기본값을 추가합니다(10)."
