@@ -55,6 +55,9 @@ bash scripts/gitops/04_deploy_harbor.sh
 bash scripts/gitops/05_deploy_jenkins.sh
 ```
 
+> `04_deploy_harbor.sh`는 기본값으로 Harbor 오프라인 installer(v2.14.1)를 GitHub에서 다운로드해 설치합니다.  
+> 폐쇄망이면 `scripts/gitops/config.env`의 `HARBOR_OFFLINE_TGZ_PATH`에 tgz 파일 경로를 직접 지정하세요.
+
 5) 파이프라인 연동(핵심)
 
 ```bash

@@ -4,7 +4,8 @@ set -euo pipefail
 # 04) Harbor 배포(선택)
 # - ENABLE_HARBOR=true 인 경우에만 동작합니다.
 # - Harbor가 이미 떠 있으면(핑 OK) 설치는 스킵합니다.
-# - 새로 설치하려면 HARBOR_OFFLINE_TGZ_PATH에 harbor-offline-installer-*.tgz 경로를 지정하세요.
+# - 기본값으로 GitHub 릴리즈(오프라인 installer tgz)를 다운로드해서 설치합니다.
+#   (폐쇄망이면 다운로드가 실패할 수 있으니, tgz를 수동 반입 후 HARBOR_OFFLINE_TGZ_PATH만 지정하세요.)
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -50,9 +51,28 @@ require_cmd docker
 require_cmd tar
 require_cmd sudo
 
+HARBOR_OFFLINE_TGZ_URL="${HARBOR_OFFLINE_TGZ_URL:-https://github.com/goharbor/harbor/releases/download/v2.14.1/harbor-offline-installer-v2.14.1.tgz}"
+HARBOR_OFFLINE_TGZ_PATH="${HARBOR_OFFLINE_TGZ_PATH:-}"
+
 if [[ -z "${HARBOR_OFFLINE_TGZ_PATH:-}" ]]; then
-  die "Harbor가 실행 중이 아니며, HARBOR_OFFLINE_TGZ_PATH가 비어있습니다. (오프라인 설치 tgz 경로를 지정하세요)"
+  file_name="$(basename "$HARBOR_OFFLINE_TGZ_URL")"
+  HARBOR_OFFLINE_TGZ_PATH="$SCRIPT_DIR/.state/$file_name"
+  log "HARBOR_OFFLINE_TGZ_PATH가 비어 있어 기본 경로를 사용합니다: $HARBOR_OFFLINE_TGZ_PATH"
 fi
+
+if [[ ! -f "$HARBOR_OFFLINE_TGZ_PATH" ]]; then
+  log "Harbor 오프라인 installer 다운로드"
+  log "URL: $HARBOR_OFFLINE_TGZ_URL"
+  log "DEST: $HARBOR_OFFLINE_TGZ_PATH"
+  if ! curl -fL --retry 3 --retry-delay 2 -o "$HARBOR_OFFLINE_TGZ_PATH" "$HARBOR_OFFLINE_TGZ_URL"; then
+    warn "다운로드에 실패했습니다. (폐쇄망/방화벽/프록시 이슈일 수 있음)"
+    warn "대안:"
+    warn "  1) 다른 곳에서 tgz를 다운로드하여 서버로 복사"
+    warn "  2) scripts/gitops/config.env에 HARBOR_OFFLINE_TGZ_PATH로 로컬 파일 경로 지정"
+    die "Harbor 오프라인 installer 다운로드 실패"
+  fi
+fi
+
 [[ -f "$HARBOR_OFFLINE_TGZ_PATH" ]] || die "Harbor tgz 파일이 없습니다: $HARBOR_OFFLINE_TGZ_PATH"
 
 # 관리자 비밀번호 준비(출력 금지)
