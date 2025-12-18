@@ -81,6 +81,9 @@ bash scripts/gitops/01_preflight.sh
 bash scripts/gitops/02_install_docker.sh
 ```
 
+> Docker 설치 직후에는 현재 세션에 `docker` 그룹이 반영되지 않아 `docker ps`가 실패할 수 있습니다.  
+> 이 경우 **SSH 재접속**(가장 확실) 또는 `newgrp docker` 후 다시 시도해 주세요.
+
 4) (선택) 서비스 배포(“스크립트로 새로 설치”할 때만)
 
 이미 GitLab/Harbor/Jenkins를 EC2에 설치해둔 상태라면 **이 단계는 건너뛰는 걸 권장**합니다.  

@@ -109,4 +109,29 @@ for c in curl jq openssl git tar; do
   require_cmd "$c"
 done
 
+# -----------------------------------------
+# Docker 권한(선택) - 자주 막히는 포인트
+# -----------------------------------------
+# 신규 설치 직후에는 보통 docker 그룹에 아직 가입되지 않아
+# "permission denied while trying to connect to the Docker daemon socket" 같은 에러가 날 수 있습니다.
+# 이 경우:
+#   sudo usermod -aG docker <사용자>
+#   (중요) SSH 재접속(또는 재로그인) 후 docker 명령이 동작합니다.
+if command -v docker >/dev/null 2>&1; then
+  log "Docker 설치 감지: $(docker --version 2>/dev/null || true)"
+  target_user="${SUDO_USER:-$USER}"
+  if docker ps >/dev/null 2>&1; then
+    log "Docker 권한: OK (현재 사용자로 docker 실행 가능)"
+  else
+    warn "Docker 권한: 현재 사용자로 docker 실행이 안 됩니다(대부분 docker 그룹 미가입)."
+    warn "해결(예): sudo usermod -aG docker ${target_user}  &&  SSH 재접속"
+    warn "현재 사용자: $(id -un) / 대상 사용자: ${target_user}"
+    warn "현재 그룹: $(id -nG | tr -d '\r')"
+    if [[ -S /var/run/docker.sock ]]; then
+      warn "docker.sock 권한(참고):"
+      ls -l /var/run/docker.sock || true
+    fi
+  fi
+fi
+
 log "사전 점검 완료 (로그: $LOG_FILE)"

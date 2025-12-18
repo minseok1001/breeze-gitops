@@ -46,6 +46,8 @@ bash 10_verify.sh
 
 - Ubuntu 24.04에서는 `docker-compose-plugin` 패키지가 없을 수 있어 `docker-compose-v2`를 우선 설치합니다.
 - `02_install_docker.sh`는 “ubuntu 패키지 설치 실패” 시 Docker 공식 APT repo 설치를 자동으로 재시도합니다.
+- Docker 설치 직후에는 현재 세션에 `docker` 그룹이 반영되지 않아 `docker ps`가 실패할 수 있습니다.
+  - 해결: **SSH 재접속(권장)** 또는 `newgrp docker` 후 다시 시도하세요.
 
 ## 4) Jenkins 관련(자주 발생)
 

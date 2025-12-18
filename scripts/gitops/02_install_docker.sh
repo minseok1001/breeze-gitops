@@ -101,9 +101,27 @@ fi
 log "Docker 서비스 활성화"
 sudo systemctl enable --now docker
 
+# docker 그룹이 없거나, docker.sock이 root:root로 잡히면 일반 사용자 실행이 막힐 수 있습니다.
+# - docker.io / docker-ce 모두 기본 그룹은 "docker" 입니다.
+# - 그룹이 없으면 만들고, 소켓 그룹이 docker가 아니면 재시작으로 재생성되게 합니다.
+if ! getent group docker >/dev/null 2>&1; then
+  log "docker 그룹이 없어 생성합니다."
+  sudo groupadd docker || true
+fi
+
+if [[ -S /var/run/docker.sock ]]; then
+  sock_group="$(stat -c '%G' /var/run/docker.sock 2>/dev/null || true)"
+  if [[ -n "${sock_group:-}" && "$sock_group" != "docker" ]]; then
+    warn "docker.sock 그룹이 '${sock_group}' 입니다. docker 그룹으로 맞추기 위해 Docker를 재시작합니다."
+    sudo systemctl restart docker
+  fi
+fi
+
 log "현재 사용자 docker 그룹 추가(재로그인 필요할 수 있음): $TARGET_USER"
 sudo usermod -aG docker "$TARGET_USER" || true
 
 log "Docker 설치 완료: $(docker --version)"
 log "docker compose 확인: $(docker compose version 2>/dev/null || true)"
+log "주의: 그룹 변경은 현재 세션에 즉시 반영되지 않을 수 있습니다."
+log "  - SSH 재접속(권장) 또는 'newgrp docker' 실행 후 docker 명령을 테스트하세요."
 log "로그: $LOG_FILE"
