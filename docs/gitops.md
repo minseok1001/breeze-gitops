@@ -36,6 +36,22 @@
   - `*_EXTERNAL_URL` : 사람이 브라우저로 접속하는 주소, GitLab Webhook이 호출하는 주소(= 도메인/ALB)
   - `*_API_URL` : 스크립트가 API 호출할 주소(= 같은 EC2에서 실행이면 `127.0.0.1`가 가장 단순)
 
+### (참고) AWS 보안그룹 인바운드(자주 막히는 포인트)
+
+ALB를 쓰는 구조라면 **인터넷 → EC2 포트(8080/8081/8084)를 직접 열기보다**, 아래처럼 “ALB → EC2”만 열어두는 게 일반적으로 안전합니다.
+
+- ALB 보안그룹(Inbound)
+  - `HTTPS 443` : `0.0.0.0/0` (또는 사내/내 IP 대역)
+- EC2 인스턴스 보안그룹(Inbound)
+  - `Custom TCP 8080` : **Source = ALB 보안그룹**
+  - `Custom TCP 8081` : **Source = ALB 보안그룹**
+  - `Custom TCP 8084` : **Source = ALB 보안그룹**
+  - (선택) `Custom TCP 2222` : Source = 내 공인 IP(`/32`) (GitLab SSH를 쓸 때만)
+
+AWS 콘솔에서 설정하는 위치:
+
+- `EC2` → `Security Groups` → (대상 SG 선택) → `Inbound rules` → `Edit inbound rules` → `Add rule`
+
 ---
 
 ## 1) 실행 순서(번호 순서 고정)
@@ -88,6 +104,9 @@ bash scripts/gitops/08_setup_jenkins_job.sh      # Jenkins 크리덴셜 + 파이
 bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins 트리거 연결
 ```
 
+> `07_seed_demo_app_repo.sh`가 만드는 `Jenkinsfile`은 `git rev-parse` 같은 git CLI를 쓰지 않고, Jenkins가 제공하는 `GIT_COMMIT` 환경변수로 이미지 태그를 만듭니다.  
+> 그래서 Jenkins 컨테이너에 git 패키지가 없어도(최소 설치) 파이프라인이 동작하는 쪽으로 맞춰져 있습니다.
+
 각 단계가 만들어내는 “산출물”을 알고 있으면 재실행/복구가 쉬워집니다.
 
 - 06 실행 후: `scripts/gitops/.secrets/harbor_robot.json` (Harbor robot 계정)
@@ -102,7 +121,31 @@ bash scripts/gitops/10_verify.sh
 
 ---
 
-## 2) Jenkins 인증 정보는 어디서 구하나?
+## 2) GitLab 토큰은 어디서 구하나?
+
+- `07_seed_demo_app_repo.sh`/`09_setup_gitlab_webhook.sh`는 GitLab API 호출이 필요해서 `GITLAB_TOKEN`이 필요합니다.
+- GitLab에서 Personal Access Token(PAT)을 만들고, `scripts/gitops/config.env`에 넣어주시면 됩니다.
+
+1) GitLab 토큰 생성 페이지로 이동
+
+- 예) `https://gitops-gitlab.breezelab.io/-/user_settings/personal_access_tokens`
+
+2) 아래처럼 생성(권장)
+
+- Name: `bootstrap`
+- Scopes: `api` (필수)
+
+3) 생성된 토큰을 `scripts/gitops/config.env`에 입력
+
+```bash
+GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxx"
+```
+
+> 토큰은 생성 직후 1번만 보여주는 경우가 많습니다. 복사해두지 않으면 다시 볼 수 없으니 바로 저장해 주세요.
+
+---
+
+## 3) Jenkins 인증 정보는 어디서 구하나?
 
 - `08_setup_jenkins_job.sh`는 Jenkins API 호출이 필요해서 `JENKINS_USER`/`JENKINS_API_TOKEN`이 필요합니다.
 - Jenkins UI에서 최초 1회 설정이 안 끝났다면, 먼저 웹에서 초기 설정을 완료해 주세요(플러그인 포함).
@@ -113,7 +156,7 @@ bash scripts/gitops/10_verify.sh
 
 ---
 
-## 3) 자주 막히는 지점(짧게)
+## 4) 자주 막히는 지점(짧게)
 
 - GitLab Webhook이 Jenkins에 도달 못함
   - ALB Target Group 헬스체크/포트(예: 8081) 확인
@@ -127,11 +170,14 @@ bash scripts/gitops/10_verify.sh
   - Jenkins 노드(=빌드가 실행되는 곳)에서 `docker login <HARBOR_REGISTRY_HOSTPORT>`가 되는지 먼저 확인하면 빠릅니다.
 - Harbor 설치 중 `KeyError: 'max_job_workers'`로 실패
   - `harbor.yml`에 `jobservice.max_job_workers`가 없을 때 발생할 수 있습니다.
-  - 현재 스크립트(`04_deploy_harbor.sh`)는 `harbor.yml.tmpl` 기반으로 생성 + 누락 시 자동 보완하도록 되어 있습니다.
+  - 현재 스크립트(`04_deploy_harbor.sh`)는 `harbor.yml`을 “최소 구성”으로 직접 생성하며, `jobservice.max_job_workers`를 기본 포함합니다.
+- Harbor 설치 중 `The protocol is https but attribute ssl_cert is not set`
+  - `HARBOR_PROTOCOL=https`인데 인증서 경로(`HARBOR_SSL_CERT_PATH/HARBOR_SSL_KEY_PATH`)가 비어 있으면 발생합니다.
+  - ALB에서 TLS(HTTPS)를 종료하는 구조라면 보통 `HARBOR_PROTOCOL=http`가 더 단순합니다.
 
 ---
 
-## 4) 다음 단계(나중에)
+## 5) 다음 단계(나중에)
 
 - EKS 생성/접속 구성
 - EKS에 Argo CD 설치

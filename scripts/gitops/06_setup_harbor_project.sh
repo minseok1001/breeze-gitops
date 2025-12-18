@@ -130,6 +130,15 @@ if [[ "$robot_http" != "201" ]]; then
     "${base}/api/v2.0/projects/${project}/robots" || true)"
 fi
 
+if [[ "$robot_http" != "201" && -n "${project_id:-}" ]]; then
+  warn "로봇 계정 생성 재시도(프로젝트 ID 경로): projects/${project_id}/robots"
+  robot_http="$(curl -sS -o "$robot_resp_file" -w "%{http_code}" \
+    -u "${admin_user}:${admin_pass}" \
+    -H "Content-Type: application/json" \
+    -d "$robot_body" \
+    "${base}/api/v2.0/projects/${project_id}/robots" || true)"
+fi
+
 if [[ "$robot_http" != "201" ]]; then
   warn "로봇 계정 생성 최종 실패(HTTP $robot_http). 응답:"
   cat "$robot_resp_file" || true

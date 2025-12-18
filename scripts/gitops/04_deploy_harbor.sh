@@ -35,7 +35,9 @@ fi
 [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP 감지 실패. config.env에 입력하세요."
 
 DATA_DIR="${DATA_DIR:-/srv/gitops-lab}"
-HARBOR_URL="http://${SERVER_IP}:${HARBOR_HTTP_PORT}"
+HARBOR_HTTP_PORT="${HARBOR_HTTP_PORT:-8084}"
+HARBOR_URL="${HARBOR_API_URL:-http://${SERVER_IP}:${HARBOR_HTTP_PORT}}"
+HARBOR_URL="$(normalize_url "$HARBOR_URL")"
 HARBOR_REGISTRY_HOSTPORT="${HARBOR_REGISTRY_HOSTPORT:-${SERVER_IP}:${HARBOR_HTTP_PORT}}"
 HARBOR_PROTOCOL="${HARBOR_PROTOCOL:-http}"
 case "$HARBOR_PROTOCOL" in
@@ -45,6 +47,7 @@ esac
 
 log "Harbor URL: $HARBOR_URL"
 log "Harbor Registry(host:port): $HARBOR_REGISTRY_HOSTPORT"
+log "Harbor protocol(설치 설정): $HARBOR_PROTOCOL"
 
 log "기존 Harbor 확인(ping)"
 existing_ping="$(curl -fsS "$HARBOR_URL/api/v2.0/ping" 2>/dev/null | tr -d '\r\n' || true)"
@@ -124,101 +127,52 @@ elif [[ -n "${HARBOR_REGISTRY_HOSTPORT:-}" ]]; then
 fi
 [[ -n "${harbor_hostname:-}" ]] || harbor_hostname="${SERVER_IP}"
 
-log "harbor.yml 생성(템플릿 기반)"
-if [[ -f "$HARBOR_DIR/harbor.yml.tmpl" ]]; then
-  sudo cp -a "$HARBOR_DIR/harbor.yml.tmpl" "$HARBOR_DIR/harbor.yml"
-else
-  warn "harbor.yml.tmpl을 찾지 못했습니다. 최소 설정 파일로 생성합니다(버전 차이에 취약할 수 있음)."
+log "harbor.yml 생성(최소 구성)"
+# Harbor v2.14.x에서는 harbor.yml이 너무 최소이면 prepare 단계에서 KeyError가 날 수 있어,
+# 기본적으로 아래 필드들은 반드시 포함합니다.
+# - harbor_admin_password / database.password / data_volume / jobservice.max_job_workers
+#
+# https 모드는 인증서(ssl_cert/ssl_cert_key)가 필수라서, 여기서는 명시적으로 값이 없으면 중단합니다.
+if [[ "$HARBOR_PROTOCOL" == "https" ]]; then
+  HARBOR_HTTPS_PORT="${HARBOR_HTTPS_PORT:-443}"
+  HARBOR_SSL_CERT_PATH="${HARBOR_SSL_CERT_PATH:-}"
+  HARBOR_SSL_KEY_PATH="${HARBOR_SSL_KEY_PATH:-}"
+  [[ -n "${HARBOR_SSL_CERT_PATH:-}" ]] || die "HARBOR_PROTOCOL=https 인데 HARBOR_SSL_CERT_PATH가 비어 있습니다. (ALB에서 TLS를 종료한다면 HARBOR_PROTOCOL=http 권장)"
+  [[ -n "${HARBOR_SSL_KEY_PATH:-}" ]] || die "HARBOR_PROTOCOL=https 인데 HARBOR_SSL_KEY_PATH가 비어 있습니다. (ALB에서 TLS를 종료한다면 HARBOR_PROTOCOL=http 권장)"
   sudo tee "$HARBOR_DIR/harbor.yml" >/dev/null <<EOF
 hostname: ${harbor_hostname}
-protocol: ${HARBOR_PROTOCOL}
+
 http:
   port: ${HARBOR_HTTP_PORT}
+
+https:
+  port: ${HARBOR_HTTPS_PORT}
+  ssl_cert: ${HARBOR_SSL_CERT_PATH}
+  ssl_cert_key: ${HARBOR_SSL_KEY_PATH}
+
 harbor_admin_password: ${HARBOR_ADMIN_PASSWORD}
+
 database:
   password: ${HARBOR_ADMIN_PASSWORD}
+
 data_volume: ${DATA_DIR}/harbor
+
 jobservice:
   max_job_workers: 10
 EOF
-fi
-
-# 템플릿 기반인 경우, 필요한 값만 안전하게 교체합니다.
-tmp_yaml="$SCRIPT_DIR/.state/harbor.yml.tmp_$(date +%Y%m%d_%H%M%S)"
-sudo awk \
-  -v host="$harbor_hostname" \
-  -v proto="$HARBOR_PROTOCOL" \
-  -v http_port="${HARBOR_HTTP_PORT}" \
-  -v admin_pw="${HARBOR_ADMIN_PASSWORD}" \
-  -v db_pw="${HARBOR_ADMIN_PASSWORD}" \
-  -v data_vol="${DATA_DIR}/harbor" \
-  '
-  BEGIN {in_http=0; in_db=0}
-  /^hostname:/ {print "hostname: " host; next}
-  /^protocol:/ {print "protocol: " proto; next}
-  /^http:/ {in_http=1; in_db=0; print; next}
-  /^database:/ {in_db=1; in_http=0; print; next}
-  /^data_volume:/ {print "data_volume: " data_vol; next}
-  /^harbor_admin_password:/ {print "harbor_admin_password: " admin_pw; next}
-  {
-    if (in_http && $1=="port:") {print "  port: " http_port; next}
-    if (in_db && $1=="password:") {print "  password: " db_pw; next}
-    if ($0 ~ /^[^[:space:]]/) {in_http=0; in_db=0}
-    print
-  }
-  ' "$HARBOR_DIR/harbor.yml" > "$tmp_yaml"
-sudo install -m 0644 "$tmp_yaml" "$HARBOR_DIR/harbor.yml"
-rm -f "$tmp_yaml"
-
-# 기본값은 ALB/외부 TLS 종료를 전제로 "http" 로 둡니다.
-# 만약 템플릿에 https 섹션이 활성화되어 있거나 protocol=https로 잡혀 있으면 설치가 실패할 수 있어,
-# HARBOR_PROTOCOL=http 인 경우 https 섹션은 강제로 비활성화(주석 처리)합니다.
-if [[ "$HARBOR_PROTOCOL" == "http" ]]; then
-  tmp_yaml="$SCRIPT_DIR/.state/harbor.yml.tmp_$(date +%Y%m%d_%H%M%S)"
-  sudo awk '
-    BEGIN {in_https=0}
-    /^[[:space:]]*https:[[:space:]]*$/ {
-      in_https=1
-      print "# https:"
-      next
-    }
-    {
-      if (in_https) {
-        if ($0 ~ /^[^[:space:]#]/) {in_https=0; print; next}
-        if ($0 ~ /^#/) {print; next}
-        if ($0 ~ /^$/) {print; next}
-        print "# " $0
-        next
-      }
-      print
-    }
-  ' "$HARBOR_DIR/harbor.yml" > "$tmp_yaml"
-  sudo install -m 0644 "$tmp_yaml" "$HARBOR_DIR/harbor.yml"
-  rm -f "$tmp_yaml"
-fi
-
-# Harbor v2.14.x에서 jobservice.max_job_workers가 없으면 prepare 단계가 실패할 수 있습니다.
-if sudo grep -q '^jobservice:' "$HARBOR_DIR/harbor.yml"; then
-  if ! sudo awk '
-    BEGIN{in_section=0; found=0}
-    /^jobservice:/ {in_section=1; next}
-    /^[^[:space:]]/ {if(in_section){exit found?0:1}}
-    in_section && /^[[:space:]]+max_job_workers:/ {found=1}
-    END{exit found?0:1}
-  ' "$HARBOR_DIR/harbor.yml"; then
-    log "jobservice.max_job_workers가 없어 기본값을 추가합니다(10)."
-    tmp_yaml="$SCRIPT_DIR/.state/harbor.yml.tmp_$(date +%Y%m%d_%H%M%S)"
-    sudo awk '
-      BEGIN{done=0}
-      {print}
-      /^jobservice:/ && done==0 {print "  max_job_workers: 10"; done=1}
-    ' "$HARBOR_DIR/harbor.yml" > "$tmp_yaml"
-    sudo install -m 0644 "$tmp_yaml" "$HARBOR_DIR/harbor.yml"
-    rm -f "$tmp_yaml"
-  fi
 else
-  log "jobservice 섹션이 없어 기본값을 추가합니다."
-  sudo tee -a "$HARBOR_DIR/harbor.yml" >/dev/null <<EOF
+  sudo tee "$HARBOR_DIR/harbor.yml" >/dev/null <<EOF
+hostname: ${harbor_hostname}
+
+http:
+  port: ${HARBOR_HTTP_PORT}
+
+harbor_admin_password: ${HARBOR_ADMIN_PASSWORD}
+
+database:
+  password: ${HARBOR_ADMIN_PASSWORD}
+
+data_volume: ${DATA_DIR}/harbor
 
 jobservice:
   max_job_workers: 10

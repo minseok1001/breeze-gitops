@@ -27,10 +27,6 @@ if [[ "${ENABLE_GITLAB:-false}" != "true" ]]; then
   exit 0
 fi
 
-if [[ -z "${GITLAB_TOKEN:-}" ]]; then
-  die "GITLAB_TOKEN이 비어 있습니다. (GitLab Personal Access Token(api scope)을 scripts/gitops/config.env에 입력하세요)"
-fi
-
 require_cmd curl
 require_cmd jq
 
@@ -38,6 +34,19 @@ if [[ -z "${SERVER_IP:-}" ]]; then
   SERVER_IP="$(detect_server_ip)"
 fi
 [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP 감지 실패. config.env에 입력하세요."
+
+if [[ -z "${GITLAB_TOKEN:-}" ]]; then
+  # 토큰 생성 페이지(힌트) 출력용
+  hint_base="${GITLAB_EXTERNAL_URL:-}"
+  if [[ -z "${hint_base:-}" ]]; then
+    hint_base="${GITLAB_API_URL:-}"
+  fi
+  if [[ -z "${hint_base:-}" ]]; then
+    hint_base="http://${SERVER_IP}:${GITLAB_HTTP_PORT:-8080}"
+  fi
+  hint_base="$(normalize_url "$hint_base")"
+  die "GITLAB_TOKEN이 비어 있습니다. GitLab Personal Access Token(api scope)을 생성해 scripts/gitops/config.env에 입력하세요.\n예) ${hint_base}/-/user_settings/personal_access_tokens"
+fi
 
 harbor_registry="${HARBOR_REGISTRY_HOSTPORT:-}"
 if [[ -z "${harbor_registry:-}" && -n "${HARBOR_EXTERNAL_URL:-}" ]]; then
@@ -135,7 +144,7 @@ dockerfile="FROM ${base_image}\nCOPY index.html /usr/share/nginx/html/index.html
 
 index_html="<!doctype html>\n<html>\n  <head><meta charset=\"utf-8\" /><title>demo-app</title></head>\n  <body>\n    <h1>demo-app</h1>\n    <p>Built by Jenkins, pushed to Harbor.</p>\n  </body>\n</html>\n"
 
-jenkinsfile="pipeline {\n  agent any\n  environment {\n    REGISTRY = '${harbor_registry}'\n    PROJECT  = '${harbor_project}'\n    IMAGE    = '${app_name}'\n  }\n  stages {\n    stage('Build') {\n      steps {\n        script {\n          env.TAG = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()\n        }\n        sh \"docker build -t \\\"\\${REGISTRY}/\\${PROJECT}/\\${IMAGE}:\\${TAG}\\\" .\"\n      }\n    }\n    stage('Login & Push') {\n      steps {\n        withCredentials([usernamePassword(credentialsId: 'harbor-robot', usernameVariable: 'HARBOR_USER', passwordVariable: 'HARBOR_PASS')]) {\n          sh '''\n            set -e\n            echo \"$HARBOR_PASS\" | docker login \"$REGISTRY\" -u \"$HARBOR_USER\" --password-stdin\n            docker push \"$REGISTRY/$PROJECT/$IMAGE:$TAG\"\n            docker logout \"$REGISTRY\" || true\n          '''\n        }\n      }\n    }\n  }\n}\n"
+jenkinsfile="pipeline {\n  agent any\n  environment {\n    REGISTRY = '${harbor_registry}'\n    PROJECT  = '${harbor_project}'\n    IMAGE    = '${app_name}'\n  }\n  stages {\n    stage('Build') {\n      steps {\n        script {\n          // Jenkins 환경변수(GIT_COMMIT)를 활용해 tag를 만들면, 컨트롤러에 git CLI가 없어도 동작합니다.\n          def sha = env.GIT_COMMIT ?: ''\n          env.TAG = sha ? sha.take(8) : 'build-' + env.BUILD_NUMBER\n        }\n        sh \"docker build -t \\\"\\${REGISTRY}/\\${PROJECT}/\\${IMAGE}:\\${TAG}\\\" .\"\n      }\n    }\n    stage('Login & Push') {\n      steps {\n        withCredentials([usernamePassword(credentialsId: 'harbor-robot', usernameVariable: 'HARBOR_USER', passwordVariable: 'HARBOR_PASS')]) {\n          sh '''\n            set -e\n            echo \"$HARBOR_PASS\" | docker login \"$REGISTRY\" -u \"$HARBOR_USER\" --password-stdin\n            docker push \"$REGISTRY/$PROJECT/$IMAGE:$TAG\"\n            docker logout \"$REGISTRY\" || true\n          '''\n        }\n      }\n    }\n  }\n}\n"
 
 dockerignore=".git\n.gitlab-ci.yml\n"
 
@@ -186,4 +195,3 @@ log "완료"
 log "프로젝트: $(echo "$project_json" | jq -r '.web_url')"
 log "상태 파일: scripts/gitops/.state/gitlab_demo_app_project.json"
 log "완료 (로그: $LOG_FILE)"
-
