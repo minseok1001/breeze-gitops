@@ -112,6 +112,22 @@ sudo mkdir -p "$DATA_DIR/harbor"
 
 HARBOR_DIR="/opt/harbor"
 log "Harbor 설치 디렉토리 준비: $HARBOR_DIR"
+
+# 이전 실패/재설치 상황에서 컨테이너가 남아있으면 install.sh가 꼬일 수 있어,
+# 가능한 범위에서 먼저 정리합니다.
+if [[ -d "$HARBOR_DIR" ]]; then
+  log "기존 Harbor 설치 흔적 정리 시도"
+  if docker compose version >/dev/null 2>&1 && [[ -f "$HARBOR_DIR/docker-compose.yml" ]]; then
+    sudo docker compose -f "$HARBOR_DIR/docker-compose.yml" down || true
+  elif command -v docker-compose >/dev/null 2>&1 && [[ -f "$HARBOR_DIR/docker-compose.yml" ]]; then
+    sudo docker-compose -f "$HARBOR_DIR/docker-compose.yml" down || true
+  fi
+  # harbor 관련 컨테이너가 남아있으면 강제 제거(최소 범위: 이름에 harbor 포함)
+  if docker ps -a --format '{{.Names}}' | grep -qi '^harbor'; then
+    sudo docker rm -f $(docker ps -a --format '{{.Names}}' | grep -i '^harbor' | tr '\n' ' ') || true
+  fi
+fi
+
 sudo rm -rf "$HARBOR_DIR"
 sudo mkdir -p "$HARBOR_DIR"
 sudo tar xzf "$HARBOR_OFFLINE_TGZ_PATH" -C "$HARBOR_DIR" --strip-components=1
@@ -130,7 +146,8 @@ fi
 log "harbor.yml 생성(최소 구성)"
 # Harbor v2.14.x에서는 harbor.yml이 너무 최소이면 prepare 단계에서 KeyError가 날 수 있어,
 # 기본적으로 아래 필드들은 반드시 포함합니다.
-# - harbor_admin_password / database.password / data_volume / jobservice.max_job_workers
+# - harbor_admin_password / database.password / data_volume
+# - jobservice.max_job_workers / jobservice.job_loggers 등
 #
 # https 모드는 인증서(ssl_cert/ssl_cert_key)가 필수라서, 여기서는 명시적으로 값이 없으면 중단합니다.
 if [[ "$HARBOR_PROTOCOL" == "https" ]]; then
@@ -147,8 +164,8 @@ http:
 
 https:
   port: ${HARBOR_HTTPS_PORT}
-  ssl_cert: ${HARBOR_SSL_CERT_PATH}
-  ssl_cert_key: ${HARBOR_SSL_KEY_PATH}
+  certificate: ${HARBOR_SSL_CERT_PATH}
+  private_key: ${HARBOR_SSL_KEY_PATH}
 
 harbor_admin_password: ${HARBOR_ADMIN_PASSWORD}
 
@@ -157,8 +174,34 @@ database:
 
 data_volume: ${DATA_DIR}/harbor
 
+trivy:
+  ignore_unfixed: false
+  skip_update: false
+  offline_scan: false
+  security_check: vuln
+  insecure: false
+  timeout: 5m0s
+
 jobservice:
   max_job_workers: 10
+  max_job_duration_hours: 24
+  job_loggers:
+    - STD_OUTPUT
+    - FILE
+  logger_sweeper_duration: 1 #days
+
+notification:
+  webhook_job_max_retry: 3
+  webhook_job_http_client_timeout: 3 #seconds
+
+log:
+  level: info
+  local:
+    rotate_count: 50
+    rotate_size: 200M
+    location: /var/log/harbor
+
+_version: 2.14.0
 EOF
 else
   sudo tee "$HARBOR_DIR/harbor.yml" >/dev/null <<EOF
@@ -174,8 +217,34 @@ database:
 
 data_volume: ${DATA_DIR}/harbor
 
+trivy:
+  ignore_unfixed: false
+  skip_update: false
+  offline_scan: false
+  security_check: vuln
+  insecure: false
+  timeout: 5m0s
+
 jobservice:
   max_job_workers: 10
+  max_job_duration_hours: 24
+  job_loggers:
+    - STD_OUTPUT
+    - FILE
+  logger_sweeper_duration: 1 #days
+
+notification:
+  webhook_job_max_retry: 3
+  webhook_job_http_client_timeout: 3 #seconds
+
+log:
+  level: info
+  local:
+    rotate_count: 50
+    rotate_size: 200M
+    location: /var/log/harbor
+
+_version: 2.14.0
 EOF
 fi
 

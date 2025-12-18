@@ -177,9 +177,9 @@ GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxx"
 - Harbor push 실패
   - ALB가 HTTPS로 노출되어 있지 않으면 Docker에서 insecure registry 설정이 필요할 수 있음
   - Jenkins 노드(=빌드가 실행되는 곳)에서 `docker login <HARBOR_REGISTRY_HOSTPORT>`가 되는지 먼저 확인하면 빠릅니다.
-- Harbor 설치 중 `KeyError: 'max_job_workers'`로 실패
-  - `harbor.yml`에 `jobservice.max_job_workers`가 없을 때 발생할 수 있습니다.
-  - 현재 스크립트(`04_deploy_harbor.sh`)는 `harbor.yml`을 “최소 구성”으로 직접 생성하며, `jobservice.max_job_workers`를 기본 포함합니다.
+- Harbor 설치 중 `KeyError`로 실패 (`max_job_workers`, `job_loggers` 등)
+  - `harbor.yml`에 `jobservice.*` 필드가 너무 적으면 발생할 수 있습니다. (v2.14.x에서 자주 보임)
+  - 현재 스크립트(`04_deploy_harbor.sh`)는 `harbor.yml`을 “최소 구성”으로 직접 생성하지만, `jobservice.job_loggers` 등 필수 키는 기본 포함합니다.
 - Harbor 설치 중 `The protocol is https but attribute ssl_cert is not set`
   - `HARBOR_PROTOCOL=https`인데 인증서 경로(`HARBOR_SSL_CERT_PATH/HARBOR_SSL_KEY_PATH`)가 비어 있으면 발생합니다.
   - ALB에서 TLS(HTTPS)를 종료하는 구조라면 보통 `HARBOR_PROTOCOL=http`가 더 단순합니다.
