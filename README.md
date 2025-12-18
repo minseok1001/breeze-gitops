@@ -13,9 +13,15 @@ EKS(Argo CD)는 **후반 작업**으로 분리합니다.
 1) 설정 파일 작성
 
 ```bash
-cp scripts/gitops/config.env.example scripts/gitops/config.env
 vi scripts/gitops/config.env
 ```
+
+> `scripts/gitops/config.env`는 기본으로 제공되며(gitignore 대상), 필요한 값만 채워서 사용합니다.  
+> 예시 파일로 “초기화”하고 싶으면 아래를 실행하세요.
+>
+> ```bash
+> cp scripts/gitops/config.env.example scripts/gitops/config.env
+> ```
 
 2) 스크립트 순서대로 실행(번호 순, Jenkins까지)
 
@@ -32,7 +38,7 @@ bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins �
 bash scripts/gitops/10_verify.sh
 ```
 
-> GitLab/Harbor/Jenkins는 기본값이 비활성화되어 있습니다. 사용하려면 `scripts/gitops/config.env`에서 `ENABLE_*="true"`로 켜세요.
+> GitLab/Harbor/Jenkins는 기본값이 활성화되어 있습니다. 끄려면 `scripts/gitops/config.env`에서 `ENABLE_*="false"`로 변경하세요.
 
 ## 신규 인스턴스(깨끗한 Ubuntu)에서 주의
 

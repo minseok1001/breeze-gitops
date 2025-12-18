@@ -56,12 +56,18 @@ AWS 콘솔에서 설정하는 위치:
 
 ## 1) 실행 순서(번호 순서 고정)
 
-1) 설정 파일 생성/수정
+1) 설정 파일 확인/수정
 
 ```bash
-cp scripts/gitops/config.env.example scripts/gitops/config.env
 vi scripts/gitops/config.env
 ```
+
+> `scripts/gitops/config.env`는 기본으로 제공되며(gitignore 대상), 필요한 값만 채워서 사용합니다.  
+> 예시 파일로 “초기화”하고 싶으면 아래를 실행하세요.
+>
+> ```bash
+> cp scripts/gitops/config.env.example scripts/gitops/config.env
+> ```
 
 설정에서 “최소로 꼭 채워야 하는 값”만 뽑으면 보통 아래입니다.
 

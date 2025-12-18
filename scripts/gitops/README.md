@@ -11,9 +11,15 @@
 ## 0) 설정
 
 ```bash
-cp config.env.example config.env
 vi config.env
 ```
+
+> `config.env`는 기본으로 제공되며(gitignore 대상), 필요한 값만 채워서 사용합니다.  
+> 예시 파일로 “초기화”하고 싶으면 아래를 실행하세요.
+>
+> ```bash
+> cp config.env.example config.env
+> ```
 
 ### 신규 인스턴스에서 필수 패키지 자동 설치
 
