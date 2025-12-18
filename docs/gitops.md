@@ -125,6 +125,9 @@ bash scripts/gitops/10_verify.sh
 - Harbor push 실패
   - ALB가 HTTPS로 노출되어 있지 않으면 Docker에서 insecure registry 설정이 필요할 수 있음
   - Jenkins 노드(=빌드가 실행되는 곳)에서 `docker login <HARBOR_REGISTRY_HOSTPORT>`가 되는지 먼저 확인하면 빠릅니다.
+- Harbor 설치 중 `KeyError: 'max_job_workers'`로 실패
+  - `harbor.yml`에 `jobservice.max_job_workers`가 없을 때 발생할 수 있습니다.
+  - 현재 스크립트(`04_deploy_harbor.sh`)는 `harbor.yml.tmpl` 기반으로 생성 + 누락 시 자동 보완하도록 되어 있습니다.
 
 ---
 
