@@ -75,9 +75,38 @@ urlencode() {
   jq -nr --arg v "$raw" '$v|@uri'
 }
 
+gitlab_api_base_url() {
+  local base="${GITLAB_API_URL:-}"
+  if [[ -z "${base:-}" ]]; then
+    [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP가 비어 있습니다. (gitlab api url 구성 실패)"
+    base="http://${SERVER_IP}:${GITLAB_HTTP_PORT}"
+  fi
+  normalize_url "$base"
+}
+
 gitlab_api() {
   local method="$1"; shift
   local path="$1"; shift
-  local url="http://${SERVER_IP}:${GITLAB_HTTP_PORT}/api/v4${path}"
+  local base
+  base="$(gitlab_api_base_url)"
+  local url="${base}/api/v4${path}"
   curl -fsS -X "$method" -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$@" "$url"
+}
+
+harbor_api_base_url() {
+  local base="${HARBOR_API_URL:-}"
+  if [[ -z "${base:-}" ]]; then
+    [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP가 비어 있습니다. (harbor api url 구성 실패)"
+    base="http://${SERVER_IP}:${HARBOR_HTTP_PORT}"
+  fi
+  normalize_url "$base"
+}
+
+jenkins_api_base_url() {
+  local base="${JENKINS_API_URL:-}"
+  if [[ -z "${base:-}" ]]; then
+    [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP가 비어 있습니다. (jenkins api url 구성 실패)"
+    base="http://${SERVER_IP}:${JENKINS_HTTP_PORT}"
+  fi
+  normalize_url "$base"
 }

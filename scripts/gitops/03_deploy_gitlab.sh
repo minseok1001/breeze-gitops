@@ -15,10 +15,10 @@ LOG_FILE="$SCRIPT_DIR/.logs/03_deploy_gitlab_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 load_config
-validate_bool "ENABLE_GITLAB" "${ENABLE_GITLAB:-}"
+validate_bool "ENABLE_GITLAB" "${ENABLE_GITLAB:-false}"
 
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
-log "ENABLE_GITLAB=${ENABLE_GITLAB:-}"
+log "ENABLE_GITLAB=${ENABLE_GITLAB:-false}"
 
 if ! is_true "${ENABLE_GITLAB:-false}"; then
   log "ENABLE_GITLAB=false → GitLab 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_GITLAB=\"true\"로 변경)"
@@ -108,6 +108,19 @@ if [[ "$need_env" == "true" ]]; then
         external_url '${external_url}'
         gitlab_rails['gitlab_shell_ssh_port'] = ${GITLAB_SSH_PORT}
 EOF
+      # ALB가 HTTPS를 종료(terminate)하고 GitLab은 HTTP(80)로 받는 구성을 안전하게 지원
+      # - external_url을 https로 두되, 내부 nginx는 80/http로 유지
+      if [[ "$external_url" == https://* ]]; then
+        cat <<'EOF'
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        nginx['proxy_set_headers'] = {
+          'X-Forwarded-Proto' => 'https',
+          'X-Forwarded-Ssl' => 'on'
+        }
+        letsencrypt['enable'] = false
+EOF
+      fi
     fi
   } >> "$COMPOSE_FILE"
 fi

@@ -15,10 +15,10 @@ LOG_FILE="$SCRIPT_DIR/.logs/04_deploy_harbor_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 load_config
-validate_bool "ENABLE_HARBOR" "${ENABLE_HARBOR:-}"
+validate_bool "ENABLE_HARBOR" "${ENABLE_HARBOR:-false}"
 
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
-log "ENABLE_HARBOR=${ENABLE_HARBOR:-}"
+log "ENABLE_HARBOR=${ENABLE_HARBOR:-false}"
 
 if ! is_true "${ENABLE_HARBOR:-false}"; then
   log "ENABLE_HARBOR=false → Harbor 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_HARBOR=\"true\"로 변경)"

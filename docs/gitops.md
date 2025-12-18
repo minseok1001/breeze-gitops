@@ -1,75 +1,99 @@
-# GitOps 최소 구성 가이드 (Ubuntu 24.04 단일 서버)
+# EC2 DevOps 체인 부트스트랩 (GitLab → Jenkins → Harbor)
 
-목표: **k3s + Argo CD**를 기준으로 GitOps 배포가 가능한 최소 구성을 만든다.  
-선택적으로 **GitLab(코드/매니페스트 저장소)**, **Harbor(레지스트리)**까지 같은 서버에 올릴 수 있다.
+목표: **EKS(GitOps/Argo CD)는 나중에** 붙이고, 지금은 EC2에서
 
-## 0) 전제
+- GitLab(소스/매니페스트 저장소)
+- Jenkins(CI)
+- Harbor(레지스트리)
 
-- OS: Ubuntu 24.04 (EC2 등)
-- 권한: sudo 가능
-- 네트워크:
-  - 온라인 설치면 패키지/설치 스크립트 다운로드가 필요
-  - 폐쇄망이면 Docker/k3s/Argo CD 설치 파일을 별도로 준비해야 함(이 문서는 온라인 기준)
+까지 “한 줄(연동)”을 먼저 완성한다.
 
-## 1) 설치/배포되는 것(최소)
+> 이미 GitLab/Harbor/Jenkins를 EC2에 설치했고, Route53 + ALB(호스트 기반)까지 구성했다면  
+> 이 문서/스크립트는 “재설치”가 아니라 **연동 자동화**에 초점을 둡니다.
 
-- Kubernetes: k3s (단일 노드)
-- GitOps: Argo CD (k3s 내부에 설치)
+---
 
-## 2) 선택 구성
+## 0) 준비(필수)
 
-- Git 저장소: GitLab (Docker 컨테이너)
-- 레지스트리: Harbor (오프라인 installer 기반 설치 권장)
+- Ubuntu 24.04 EC2
+- `sudo` 가능
+- 스크립트는 기본적으로 “서비스가 설치된 EC2에서 실행”을 가정합니다. (기본 `*_API_URL=http://127.0.0.1:<port>`)  
+  다른 곳에서 실행하면 `scripts/gitops/config.env`의 `*_API_URL`을 외부 도메인으로 바꿔야 합니다.
+- (권장) Route53 + ALB 도메인
+  - `gitops-gitlab.breezelab.io`
+  - `gitops-harbor.breezelab.io`
+  - `gitops-jenkins.breezelab.io`
 
-## 2.1) GitLab 리소스 가이드(중요)
+---
 
-- GitLab은 초기 설치/DB 마이그레이션 때문에 **처음 기동이 오래 걸릴 수 있습니다(10~30분+)**.
-- 최소 4GB RAM, 권장 8GB+ 입니다. 메모리가 작으면 `unhealthy/502`가 반복될 수 있습니다.
+## 1) 실행 순서(번호 순서 고정)
 
-## 2.2) GitLab 배포 모드(중요)
+1) 설정 파일 생성/수정
 
-- 기본은 “최소 구성”으로 띄웁니다(볼륨/추가 설정 최소화 → 실패 확률 낮음).
-- 데이터 유지가 필요하면 `scripts/gitops/config.env`에서 `GITLAB_PERSIST_DATA=true`로 켜세요.
-- GitLab 링크/클론 URL이 이상하면 `GITLAB_APPLY_OMNIBUS_CONFIG=true`로 켜고, 필요 시 `GITLAB_EXTERNAL_URL`에 공인 IP/도메인을 넣으세요.
+```bash
+cp scripts/gitops/config.env.example scripts/gitops/config.env
+vi scripts/gitops/config.env
+```
 
-## 3) 실행 순서(가장 중요)
+2) 사전 점검(필수 패키지 자동 설치 포함)
 
-1. `scripts/gitops/config.env` 작성 (`config.env.example`를 수정하는 게 아니라, 꼭 `config.env`를 생성/수정)
-2. `01_preflight.sh` (환경 점검 + 신규 인스턴스 필수 패키지 설치 점검)
-3. `02_install_docker.sh` (Docker 없으면 설치)
-4. `03_deploy_gitlab.sh` (선택)
-5. `04_deploy_harbor.sh` (선택)
-6. `05_install_k3s.sh`
-7. `06_install_argocd.sh`
-8. `07_bootstrap_git_repo.sh` (선택: GitLab에 데모 GitOps 리포 생성/시드)
-9. `08_bootstrap_argocd.sh` (Argo CD에 리포 등록 + Application 생성)
-10. `09_verify.sh`
+```bash
+bash scripts/gitops/01_preflight.sh
+```
 
-## 4) 접속/확인 포인트
+3) Docker 설치(EC2에 Docker가 없으면)
 
-- Argo CD:
-  - 기본은 NodePort로 노출(예: `https://<SERVER_IP>:30443`)
-  - 초기 비밀번호는 스크립트가 `scripts/gitops/.secrets/`에 저장(터미널 출력 최소화)
-- k3s:
-  - `kubectl get nodes` 로 노드 Ready 확인
-- GitLab/Harbor(선택):
-  - 포트/URL은 `config.env`에서 변경 가능
+```bash
+bash scripts/gitops/02_install_docker.sh
+```
 
-## 5) 가장 흔한 이슈
+4) (선택) 서비스 배포(이미 설치되어 있으면 스킵 가능)
 
-- GitLab이 `unhealthy`이고 502(badgateway)가 계속 뜸
-  - 대부분 메모리 부족/초기 마이그레이션 지연입니다. 먼저 `free -h`로 메모리 확인 후 충분히 기다려보세요.
-  - 계속 실패하면 `docker exec -it gitlab gitlab-ctl status` 및 `gitlab-ctl tail puma`로 원인 확인이 필요합니다.
-  - PostgreSQL이 shared memory 관련으로 죽는 경우가 있어, `GITLAB_SHM_SIZE=1g` 이상으로 올려 재시도해볼 수 있습니다.
-  - 이전 데이터(볼륨)가 꼬인 경우, `GITLAB_PERSIST_DATA=false`(최소 구성)로 먼저 확인하거나 `DATA_DIR/gitlab` 초기화가 필요할 수 있습니다.
-- Docker 설치에서 `docker-compose-plugin`을 찾지 못함
-  - Ubuntu 24.04에서 흔한 케이스이며, 스크립트는 `docker-compose-v2`를 우선 설치하도록 되어 있습니다.
-- preflight에서 apt 설치가 실패함
-  - 기본은 `AUTO_INSTALL_PREREQS=true`로 `apt-get install`을 시도합니다(온라인 필요).
-  - 폐쇄망이면 `AUTO_INSTALL_PREREQS=false`로 두고, 필요한 패키지를 수동으로 설치한 뒤 진행하세요.
-- Argo CD가 외부에서 접속 안됨
-  - 보안그룹/방화벽에서 NodePort(기본 30443) 허용 확인
-- GitLab이 “기동은 되는데 매우 느림”
-  - 디스크/메모리 부족이 가장 흔함(특히 t3.small 급)
-- Harbor가 HTTP인 경우 이미지 push/pull 실패
-  - Docker(호스트) 및 k3s(containerd)에 insecure registry 설정이 필요할 수 있음
+```bash
+bash scripts/gitops/03_deploy_gitlab.sh
+bash scripts/gitops/04_deploy_harbor.sh
+bash scripts/gitops/05_deploy_jenkins.sh
+```
+
+5) 파이프라인 연동(핵심)
+
+```bash
+bash scripts/gitops/06_setup_harbor_project.sh   # Harbor 프로젝트 + robot 생성
+bash scripts/gitops/07_seed_demo_app_repo.sh     # GitLab 데모 리포 생성/시드(Dockerfile/Jenkinsfile)
+bash scripts/gitops/08_setup_jenkins_job.sh      # Jenkins 크리덴셜 + 파이프라인 Job 생성
+bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins 트리거 연결
+```
+
+6) 검증
+
+```bash
+bash scripts/gitops/10_verify.sh
+```
+
+---
+
+## 2) Jenkins 인증 정보는 어디서 구하나?
+
+- `08_setup_jenkins_job.sh`는 Jenkins API 호출이 필요해서 `JENKINS_USER`/`JENKINS_API_TOKEN`이 필요합니다.
+- Jenkins UI → 사용자 → `Configure` → `API Token`에서 생성 후 `scripts/gitops/config.env`에 입력하세요.
+
+---
+
+## 3) 자주 막히는 지점(짧게)
+
+- GitLab Webhook이 Jenkins에 도달 못함
+  - ALB Target Group 헬스체크/포트(예: 8081) 확인
+  - EC2 보안그룹: **ALB 보안그룹 → EC2 인스턴스 포트** 인바운드 허용 필요
+- Jenkins가 Docker 빌드를 못함
+  - Jenkins가 호스트 Docker를 쓸 수 있어야 함(`/var/run/docker.sock` 권한)
+  - Docker로 Jenkins를 띄우는 경우 `05_deploy_jenkins.sh` 옵션(`JENKINS_ENABLE_DOCKER_SOCKET=true`) 사용
+- Harbor push 실패
+  - ALB가 HTTPS로 노출되어 있지 않으면 Docker에서 insecure registry 설정이 필요할 수 있음
+
+---
+
+## 4) 다음 단계(나중에)
+
+- EKS 생성/접속 구성
+- EKS에 Argo CD 설치
+- Jenkins 결과물(Harbor 이미지)을 GitOps 리포(매니페스트)로 연결
