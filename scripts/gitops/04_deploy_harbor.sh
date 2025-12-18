@@ -47,7 +47,8 @@ log "Harbor URL: $HARBOR_URL"
 log "Harbor Registry(host:port): $HARBOR_REGISTRY_HOSTPORT"
 
 log "기존 Harbor 확인(ping)"
-if curl -fsS "$HARBOR_URL/api/v2.0/ping" | jq -e . >/dev/null 2>&1; then
+existing_ping="$(curl -fsS "$HARBOR_URL/api/v2.0/ping" 2>/dev/null | tr -d '\r\n' || true)"
+if [[ "${existing_ping,,}" == "pong" || "${existing_ping,,}" == "\"pong\"" ]]; then
   log "Harbor가 이미 동작 중입니다. 설치를 스킵합니다."
   exit 0
 fi
@@ -295,7 +296,8 @@ sudo systemctl enable --now harbor.service
 log "Harbor 기동 확인(최대 5분 대기)"
 deadline=$(( $(date +%s) + 300 ))
 while [[ $(date +%s) -lt $deadline ]]; do
-  if curl -fsS "$HARBOR_URL/api/v2.0/ping" | jq -e . >/dev/null 2>&1; then
+  ping="$(curl -fsS "$HARBOR_URL/api/v2.0/ping" 2>/dev/null | tr -d '\r\n' || true)"
+  if [[ "${ping,,}" == "pong" || "${ping,,}" == "\"pong\"" ]]; then
     log "Harbor ping OK"
     break
   fi

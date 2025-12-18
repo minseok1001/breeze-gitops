@@ -46,7 +46,11 @@ base="$(harbor_api_base_url)"
 log "Harbor API Base URL: $base"
 
 log "Harbor ping 확인"
-curl -fsS "${base}/api/v2.0/ping" | jq -e . >/dev/null
+ping="$(curl -fsS "${base}/api/v2.0/ping" | tr -d '\r\n' || true)"
+if [[ "${ping,,}" != "pong" && "${ping,,}" != "\"pong\"" ]]; then
+  warn "Harbor ping 응답이 예상과 다릅니다: '$ping'"
+  die "Harbor API ping 실패 (base=${base})"
+fi
 
 project="${HARBOR_PROJECT_NAME:-demo}"
 robot_base_name="${HARBOR_ROBOT_NAME:-jenkins}"
@@ -141,4 +145,3 @@ write_secret_file "$robot_file" "$robot_json"
 
 log "로봇 계정 저장 완료: scripts/gitops/.secrets/harbor_robot.json"
 log "완료 (로그: $LOG_FILE)"
-
