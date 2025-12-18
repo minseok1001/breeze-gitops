@@ -64,7 +64,57 @@ if [[ -z "${jenkins_external:-}" ]]; then
 fi
 jenkins_external="$(normalize_url "$jenkins_external")"
 
-webhook_url="${jenkins_external}/job/${job_name}/build?token=${job_token}"
+# Jenkins는 보안 설정(anonymous 권한/CSRF)에 따라 token URL이 403을 반환할 수 있습니다.
+# - GitLab은 2xx가 아니면 Webhook을 실패로 기록하므로, 필요하면 Basic Auth를 URL에 포함시켜야 합니다.
+#   (PoC 용도에서만 권장)
+#
+# 옵션:
+# - JENKINS_WEBHOOK_USE_BUILD_BY_TOKEN=true  : /buildByToken/build 사용(플러그인 필요)
+# - JENKINS_WEBHOOK_USE_BASIC_AUTH=true     : https://user:apitoken@... 형태로 인증 포함
+#
+# 기본은 /job/<job>/build?token=... 입니다.
+use_build_by_token="${JENKINS_WEBHOOK_USE_BUILD_BY_TOKEN:-false}"
+use_basic_auth="${JENKINS_WEBHOOK_USE_BASIC_AUTH:-false}"
+
+validate_bool "JENKINS_WEBHOOK_USE_BUILD_BY_TOKEN" "$use_build_by_token"
+validate_bool "JENKINS_WEBHOOK_USE_BASIC_AUTH" "$use_basic_auth"
+
+if [[ "$use_build_by_token" == "true" ]]; then
+  webhook_url="${jenkins_external}/buildByToken/build?job=$(urlencode "$job_name")&token=$(urlencode "$job_token")"
+else
+  webhook_url="${jenkins_external}/job/${job_name}/build?token=${job_token}"
+fi
+
+if [[ "$use_basic_auth" == "true" ]]; then
+  auth_user="${JENKINS_WEBHOOK_USER:-${JENKINS_USER:-}}"
+  auth_pass="${JENKINS_WEBHOOK_PASS:-${JENKINS_API_TOKEN:-}}"
+  [[ -n "${auth_user:-}" ]] || die "JENKINS_WEBHOOK_USE_BASIC_AUTH=true 인데 JENKINS_WEBHOOK_USER/JENKINS_USER가 비어 있습니다."
+  [[ -n "${auth_pass:-}" ]] || die "JENKINS_WEBHOOK_USE_BASIC_AUTH=true 인데 JENKINS_WEBHOOK_PASS/JENKINS_API_TOKEN이 비어 있습니다."
+
+  # URL에 user:pass를 포함할 때는 특수문자 때문에 component encoding이 필요합니다.
+  scheme=""
+  rest=""
+  if [[ "$jenkins_external" == https://* ]]; then
+    scheme="https"
+    rest="${jenkins_external#https://}"
+  elif [[ "$jenkins_external" == http://* ]]; then
+    scheme="http"
+    rest="${jenkins_external#http://}"
+  else
+    die "JENKINS_EXTERNAL_URL 형식이 올바르지 않습니다: $jenkins_external"
+  fi
+
+  enc_user="$(urlencode "$auth_user")"
+  enc_pass="$(urlencode "$auth_pass")"
+  authed_base="${scheme}://${enc_user}:${enc_pass}@${rest}"
+
+  if [[ "$use_build_by_token" == "true" ]]; then
+    webhook_url="${authed_base}/buildByToken/build?job=$(urlencode "$job_name")&token=$(urlencode "$job_token")"
+  else
+    webhook_url="${authed_base}/job/${job_name}/build?token=${job_token}"
+  fi
+fi
+
 log "Webhook URL: $webhook_url"
 
 log "기존 Webhook 확인"
@@ -79,6 +129,6 @@ gitlab_api POST "/projects/${project_id}/hooks" \
   --data-urlencode "url=${webhook_url}" \
   --data-urlencode "push_events=true" \
   --data-urlencode "push_events_branch_filter=${branch}" \
-  --data-urlencode "enable_ssl_verification=true" >/dev/null
+  --data-urlencode "enable_ssl_verification=${GITLAB_WEBHOOK_ENABLE_SSL_VERIFICATION:-true}" >/dev/null
 
 log "완료 (로그: $LOG_FILE)"

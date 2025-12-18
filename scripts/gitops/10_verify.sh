@@ -88,10 +88,34 @@ if [[ "$VERIFY_TRIGGER_BUILD" == "true" ]]; then
   [[ -f "$SCRIPT_DIR/.secrets/jenkins_job_token" ]] || die "jenkins_job_token 파일이 없습니다. (08/09 스크립트를 먼저 실행)"
   job_token="$(cat "$SCRIPT_DIR/.secrets/jenkins_job_token")"
 
-  trigger_url="${jenkins_url}/job/${job_name}/build?token=${job_token}"
-  log "빌드 트리거: $trigger_url"
-  tcode="$(curl -s -o /dev/null -w "%{http_code}" "$trigger_url" || true)"
-  log "트리거 HTTP: $tcode"
+  # Jenkins 보안 설정(anonymous 권한/CSRF)에 따라 토큰 URL이 403이 날 수 있어,
+  # 가능하면 Jenkins API Token으로 “정식 API 트리거”를 우선 사용합니다.
+  if [[ -n "${JENKINS_USER:-}" && -n "${JENKINS_API_TOKEN:-}" ]]; then
+    japi="${JENKINS_API_URL:-$jenkins_url}"
+    japi="$(normalize_url "$japi")"
+    log "빌드 트리거(Jenkins API): ${japi}/job/${job_name}/build"
+
+    crumb_header=""
+    if crumb_json="$(curl -fsS -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" "${japi}/crumbIssuer/api/json" 2>/dev/null || true)"; then
+      crumb_field="$(echo "$crumb_json" | jq -r '.crumbRequestField // empty' 2>/dev/null || true)"
+      crumb_value="$(echo "$crumb_json" | jq -r '.crumb // empty' 2>/dev/null || true)"
+      if [[ -n "${crumb_field:-}" && -n "${crumb_value:-}" && "$crumb_field" != "null" && "$crumb_value" != "null" ]]; then
+        crumb_header="${crumb_field}: ${crumb_value}"
+      fi
+    fi
+
+    curl_args=( -sS -o /dev/null -w "%{http_code}" -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" -X POST )
+    if [[ -n "${crumb_header:-}" ]]; then
+      curl_args+=( -H "$crumb_header" )
+    fi
+    tcode="$(curl "${curl_args[@]}" "${japi}/job/${job_name}/build" || true)"
+    log "트리거 HTTP: $tcode"
+  else
+    trigger_url="${jenkins_url}/job/${job_name}/build?token=${job_token}"
+    log "빌드 트리거(토큰 URL): $trigger_url"
+    tcode="$(curl -s -o /dev/null -w "%{http_code}" "$trigger_url" || true)"
+    log "트리거 HTTP: $tcode"
+  fi
 
   # 빌드 결과 확인은 Jenkins 인증이 필요할 수 있음
   if [[ -n "${JENKINS_USER:-}" && -n "${JENKINS_API_TOKEN:-}" ]]; then
@@ -111,6 +135,14 @@ if [[ "$VERIFY_TRIGGER_BUILD" == "true" ]]; then
         log "빌드 #${number} building=${building} result=${result}"
       fi
       if [[ "$building" == "false" && -n "${result:-}" && "$result" != "null" ]]; then
+        if [[ "$result" != "SUCCESS" ]]; then
+          warn "빌드가 SUCCESS가 아닙니다. Jenkins 콘솔 로그(마지막 120줄)를 출력합니다."
+          curl -fsS -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" "${japi}/job/${job_name}/lastBuild/consoleText" 2>/dev/null | tail -n 120 || true
+          warn "자주 원인:"
+          warn "  - Jenkins에 Git 플러그인/git 실행파일이 없어 checkout 실패"
+          warn "  - Docker 소켓 권한 문제로 docker build/login/push 실패"
+          warn "  - Harbor 로그인/프로젝트 권한(로봇 계정) 문제"
+        fi
         break
       fi
       sleep 5
@@ -145,4 +177,3 @@ if [[ "$VERIFY_TRIGGER_BUILD" == "true" ]]; then
 fi
 
 log "검증 완료 (로그: $LOG_FILE)"
-

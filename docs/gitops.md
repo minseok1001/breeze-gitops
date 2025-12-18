@@ -116,6 +116,35 @@ bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins �
 > `07_seed_demo_app_repo.sh`가 만드는 `Jenkinsfile`은 `git rev-parse` 같은 git CLI를 쓰지 않고, Jenkins가 제공하는 `GIT_COMMIT` 환경변수로 이미지 태그를 만듭니다.  
 > 그래서 Jenkins 컨테이너에 git 패키지가 없어도(최소 설치) 파이프라인이 동작하는 쪽으로 맞춰져 있습니다.
 
+### 09) GitLab Webhook 연결이 하는 일
+
+`09_setup_gitlab_webhook.sh`는 **“GitLab에 push가 발생하면 Jenkins Job이 자동 실행되게”** GitLab 프로젝트에 Webhook을 등록합니다.
+
+- 등록되는 Webhook URL 형태:
+  - `<JENKINS_EXTERNAL_URL>/job/<JENKINS_JOB_NAME>/build?token=<JENKINS_JOB_TOKEN>`
+- 이벤트:
+  - `push` 이벤트만 사용합니다.
+  - `PIPELINE_DEFAULT_BRANCH` 값으로 브랜치 필터를 겁니다. (예: `main`)
+- 재실행:
+  - 동일 URL Webhook이 이미 있으면 스킵합니다(멱등).
+
+403으로 실패하는 경우(가장 흔함):
+- Jenkins 보안 설정에서 anonymous가 `job/*`에 접근할 수 없으면, 토큰 URL을 호출해도 **응답이 403**으로 떨어질 수 있습니다.
+- GitLab은 2xx가 아니면 Webhook을 실패로 기록하므로, 이 경우 아래 중 하나로 해결합니다.
+  - (권장, PoC) `scripts/gitops/config.env`에서 `JENKINS_WEBHOOK_USE_BASIC_AUTH="true"`로 바꾸고, `JENKINS_USER/JENKINS_API_TOKEN`을 채운 뒤 09를 다시 실행  
+    - 단점: Webhook URL에 토큰이 포함되어 GitLab 설정 화면에서 노출됩니다(운영 반입 금지).
+  - (대안) Build Authorization Token Root Plugin 설치 후 `JENKINS_WEBHOOK_USE_BUILD_BY_TOKEN="true"` 사용
+
+필수 조건/준비물:
+- GitLab API 토큰: `GITLAB_TOKEN` (scope: `api`)
+- Jenkins 외부 접속 URL: `JENKINS_EXTERNAL_URL` (GitLab이 호출할 수 있어야 함)
+- 잡 토큰 파일: `scripts/gitops/.secrets/jenkins_job_token` (08에서 자동 생성)
+- 프로젝트 상태 파일: `scripts/gitops/.state/gitlab_demo_app_project.json` (07에서 생성)
+
+문제가 생기면 이렇게 확인하세요:
+- GitLab → 프로젝트 → `Settings` → `Webhooks` → `Test`로 호출 결과 확인
+- Jenkins에서 Job이 실행됐는지 `Build History` 확인
+
 각 단계가 만들어내는 “산출물”을 알고 있으면 재실행/복구가 쉬워집니다.
 
 - 06 실행 후: `scripts/gitops/.secrets/harbor_robot.json` (Harbor robot 계정)
