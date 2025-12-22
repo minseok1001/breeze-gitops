@@ -134,7 +134,9 @@ if [[ "$VERIFY_TRIGGER_BUILD" == "true" ]]; then
       if [[ -n "${number:-}" ]]; then
         log "빌드 #${number} building=${building} result=${result}"
       fi
-      if [[ "$building" == "false" && -n "${result:-}" && "$result" != "null" ]]; then
+      # Jenkins/플러그인/보안 설정에 따라 building 값이 비어있게 내려오는 케이스가 있어,
+      # result가 잡히면(=빌드가 끝났다고 판단) 결과를 우선 처리합니다.
+      if [[ -n "${result:-}" && "$result" != "null" ]]; then
         if [[ "$result" != "SUCCESS" ]]; then
           warn "빌드가 SUCCESS가 아닙니다. Jenkins 콘솔 로그(마지막 120줄)를 출력합니다."
           curl -fsS -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" "${japi}/job/${job_name}/lastBuild/consoleText" 2>/dev/null | tail -n 120 || true

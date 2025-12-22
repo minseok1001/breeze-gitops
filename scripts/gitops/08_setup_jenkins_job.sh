@@ -66,7 +66,14 @@ branch="${PIPELINE_DEFAULT_BRANCH:-main}"
 job_name="${JENKINS_JOB_NAME:-demo-app}"
 
 git_cred_id="${JENKINS_GITLAB_CRED_ID:-gitlab-pat}"
-git_user="${GITLAB_CI_USER:-oauth2}"
+# GitLab PAT로 clone 할 때 username은 보통 실제 사용자명(root 등) 또는 oauth2 방식이 동작합니다.
+# 환경에 따라 oauth2가 막히는 경우가 있어, 가능하면 프로젝트 owner.username을 기본으로 사용합니다.
+git_owner_user="$(jq -r '.owner.username // empty' "$gitlab_state" 2>/dev/null || true)"
+git_user_default="oauth2"
+if [[ -n "${git_owner_user:-}" && "$git_owner_user" != "null" ]]; then
+  git_user_default="$git_owner_user"
+fi
+git_user="${GITLAB_CI_USER:-$git_user_default}"
 git_pass="${GITLAB_CI_TOKEN:-${GITLAB_TOKEN:-}}"
 [[ -n "${git_pass:-}" ]] || die "GITLAB_TOKEN이 비어 있어 Jenkins Git 크리덴셜을 만들 수 없습니다."
 
