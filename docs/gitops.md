@@ -159,6 +159,21 @@ bash scripts/gitops/10_verify.sh
 
 ---
 
+## 0-1) 한 번에 실행(올인원)
+
+모든 단계를 “한 번에 순서대로” 실행하고 싶으면 아래 스크립트를 사용하세요.  
+각 단계는 내부에서 `ENABLE_*` 값을 확인해 자동 스킵됩니다.
+
+```bash
+sudo bash scripts/gitops/00_run_all.sh
+```
+
+실행 로그는 아래에 남습니다.
+
+- `scripts/gitops/.logs/00_run_all_*.log`
+
+---
+
 ## 2) GitLab 토큰은 어디서 구하나?
 
 - `07_seed_demo_app_repo.sh`/`09_setup_gitlab_webhook.sh`는 GitLab API 호출이 필요해서 `GITLAB_TOKEN`이 필요합니다.

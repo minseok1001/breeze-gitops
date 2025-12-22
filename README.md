@@ -38,6 +38,12 @@ bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins �
 bash scripts/gitops/10_verify.sh
 ```
 
+또는 한 번에 실행:
+
+```bash
+sudo bash scripts/gitops/00_run_all.sh
+```
+
 > GitLab/Harbor/Jenkins는 기본값이 활성화되어 있습니다. 끄려면 `scripts/gitops/config.env`에서 `ENABLE_*="false"`로 변경하세요.
 
 ## 신규 인스턴스(깨끗한 Ubuntu)에서 주의

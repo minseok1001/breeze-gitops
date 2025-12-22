@@ -41,6 +41,12 @@ bash 09_setup_gitlab_webhook.sh
 bash 10_verify.sh
 ```
 
+또는 한 번에 실행:
+
+```bash
+sudo bash 00_run_all.sh
+```
+
 ## 2) 파일/디렉토리 설명
 
 - `config.env` : 사용자 설정(커밋 금지)
