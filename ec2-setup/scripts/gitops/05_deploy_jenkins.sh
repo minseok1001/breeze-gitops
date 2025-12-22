@@ -25,7 +25,7 @@ log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "ENABLE_JENKINS=${ENABLE_JENKINS:-false}"
 
 if ! is_true "${ENABLE_JENKINS:-false}"; then
-  log "ENABLE_JENKINS=false → Jenkins 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_JENKINS=\"true\"로 변경)"
+  log "ENABLE_JENKINS=false → Jenkins 배포를 건너뜁니다. (ec2-setup/scripts/gitops/config.env에서 ENABLE_JENKINS=\"true\"로 변경)"
   exit 0
 fi
 
@@ -136,7 +136,7 @@ if [[ ! -s "$pw_file" ]]; then
   extracted_pw="$(docker exec jenkins bash -lc "cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || true" 2>/dev/null | tr -d '\r' || true)"
   if [[ -n "${extracted_pw:-}" ]]; then
     write_secret_file "$pw_file" "$extracted_pw"
-    log "초기 admin 비밀번호를 저장했습니다: scripts/gitops/.secrets/jenkins_initial_admin_password"
+    log "초기 admin 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/jenkins_initial_admin_password"
   else
     warn "초기 admin 비밀번호를 자동으로 추출하지 못했습니다."
     warn "필요 시 다음으로 확인하세요:"

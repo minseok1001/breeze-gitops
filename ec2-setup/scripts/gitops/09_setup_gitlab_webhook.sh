@@ -43,7 +43,7 @@ fi
 [[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP 감지 실패. config.env에 입력하세요."
 
 gitlab_state="$SCRIPT_DIR/.state/gitlab_demo_app_project.json"
-[[ -f "$gitlab_state" ]] || die "GitLab 프로젝트 상태 파일이 없습니다: scripts/gitops/.state/gitlab_demo_app_project.json (07_seed_demo_app_repo.sh를 먼저 실행)"
+[[ -f "$gitlab_state" ]] || die "GitLab 프로젝트 상태 파일이 없습니다: ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json (07_seed_demo_app_repo.sh를 먼저 실행)"
 
 project_id="$(jq -r '.id // empty' "$gitlab_state")"
 [[ -n "${project_id:-}" && "$project_id" != "null" ]] || die "프로젝트 ID를 읽지 못했습니다: $gitlab_state"
@@ -52,7 +52,7 @@ job_name="${JENKINS_JOB_NAME:-demo-app}"
 branch="${PIPELINE_DEFAULT_BRANCH:-main}"
 
 job_token_file="$SCRIPT_DIR/.secrets/jenkins_job_token"
-[[ -f "$job_token_file" ]] || die "Jenkins 잡 토큰 파일이 없습니다: scripts/gitops/.secrets/jenkins_job_token (08_setup_jenkins_job.sh를 먼저 실행)"
+[[ -f "$job_token_file" ]] || die "Jenkins 잡 토큰 파일이 없습니다: ec2-setup/scripts/gitops/.secrets/jenkins_job_token (08_setup_jenkins_job.sh를 먼저 실행)"
 job_token="$(cat "$job_token_file")"
 [[ -n "${job_token:-}" ]] || die "jenkins_job_token 파일이 비어 있습니다."
 

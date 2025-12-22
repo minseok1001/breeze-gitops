@@ -49,7 +49,7 @@ jenkins_token="${JENKINS_API_TOKEN:-}"
 log "Jenkins API Base URL: $jenkins_base"
 
 robot_file="$SCRIPT_DIR/.secrets/harbor_robot.json"
-[[ -f "$robot_file" ]] || die "Harbor 로봇 계정 파일이 없습니다: scripts/gitops/.secrets/harbor_robot.json (06_setup_harbor_project.sh를 먼저 실행)"
+[[ -f "$robot_file" ]] || die "Harbor 로봇 계정 파일이 없습니다: ec2-setup/scripts/gitops/.secrets/harbor_robot.json (06_setup_harbor_project.sh를 먼저 실행)"
 
 harbor_robot_user="$(jq -r '.username // empty' "$robot_file")"
 harbor_robot_pass="$(jq -r '.password // empty' "$robot_file")"
@@ -57,7 +57,7 @@ harbor_project="$(jq -r '.project // empty' "$robot_file")"
 [[ -n "${harbor_robot_user:-}" && -n "${harbor_robot_pass:-}" ]] || die "harbor_robot.json에서 username/password를 읽지 못했습니다."
 
 gitlab_state="$SCRIPT_DIR/.state/gitlab_demo_app_project.json"
-[[ -f "$gitlab_state" ]] || die "GitLab 프로젝트 상태 파일이 없습니다: scripts/gitops/.state/gitlab_demo_app_project.json (07_seed_demo_app_repo.sh를 먼저 실행)"
+[[ -f "$gitlab_state" ]] || die "GitLab 프로젝트 상태 파일이 없습니다: ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json (07_seed_demo_app_repo.sh를 먼저 실행)"
 
 repo_url="$(jq -r '.http_url_to_repo // empty' "$gitlab_state")"
 [[ -n "${repo_url:-}" ]] || die "gitlab_demo_app_project.json에서 repo URL을 읽지 못했습니다."
@@ -215,5 +215,5 @@ fi
 jenkins_external="$(normalize_url "$jenkins_external")"
 
 log "웹훅 URL(다음 단계에서 GitLab에 등록): ${jenkins_external}/job/${job_name}/build?token=<stored>"
-log "잡 토큰 파일: scripts/gitops/.secrets/jenkins_job_token"
+log "잡 토큰 파일: ec2-setup/scripts/gitops/.secrets/jenkins_job_token"
 log "완료 (로그: $LOG_FILE)"

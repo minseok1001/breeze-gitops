@@ -31,7 +31,7 @@ require_cmd sudo
 if [[ -z "${SERVER_IP:-}" ]]; then
   SERVER_IP="$(detect_server_ip)"
 fi
-[[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP를 감지하지 못했습니다. scripts/gitops/config.env에 직접 입력하세요."
+[[ -n "${SERVER_IP:-}" ]] || die "SERVER_IP를 감지하지 못했습니다. ec2-setup/scripts/gitops/config.env에 직접 입력하세요."
 
 log "사전 점검 시작"
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"

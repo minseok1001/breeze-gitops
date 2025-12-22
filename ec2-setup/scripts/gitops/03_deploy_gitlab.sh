@@ -21,7 +21,7 @@ log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "ENABLE_GITLAB=${ENABLE_GITLAB:-false}"
 
 if ! is_true "${ENABLE_GITLAB:-false}"; then
-  log "ENABLE_GITLAB=false → GitLab 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_GITLAB=\"true\"로 변경)"
+  log "ENABLE_GITLAB=false → GitLab 배포를 건너뜁니다. (ec2-setup/scripts/gitops/config.env에서 ENABLE_GITLAB=\"true\"로 변경)"
   exit 0
 fi
 
@@ -57,10 +57,10 @@ pw_file="$SCRIPT_DIR/.secrets/gitlab_root_password"
 if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
   # 사용자가 직접 지정한 경우에만 env로 주입(그 외에는 GitLab 기본 동작을 최대한 그대로 둠)
   write_secret_file "$pw_file" "$GITLAB_ROOT_PASSWORD"
-  log "GitLab root 비밀번호를 저장했습니다: scripts/gitops/.secrets/gitlab_root_password"
+  log "GitLab root 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
 else
   if [[ -f "$pw_file" ]]; then
-    log "기존 GitLab root 비밀번호 파일이 있습니다: scripts/gitops/.secrets/gitlab_root_password"
+    log "기존 GitLab root 비밀번호 파일이 있습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
   fi
 fi
 
@@ -184,7 +184,7 @@ if [[ ! -s "$pw_file" ]]; then
   extracted_pw="$(docker exec gitlab bash -lc "awk -F': ' '/Password:/{print \\$2; exit}' /etc/gitlab/initial_root_password 2>/dev/null || true" 2>/dev/null | tr -d '\r' || true)"
   if [[ -n "${extracted_pw:-}" ]]; then
     write_secret_file "$pw_file" "$extracted_pw"
-    log "GitLab root 비밀번호를 저장했습니다: scripts/gitops/.secrets/gitlab_root_password"
+    log "GitLab root 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
   else
     warn "root 비밀번호를 자동으로 추출하지 못했습니다."
     warn "필요 시 다음으로 확인하세요:"
@@ -194,6 +194,6 @@ fi
 
 log "GitLab URL: http://${SERVER_IP}:${GITLAB_HTTP_PORT}"
 if [[ -s "$pw_file" ]]; then
-  log "root 비밀번호 파일: scripts/gitops/.secrets/gitlab_root_password"
+  log "root 비밀번호 파일: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
 fi
 log "완료 (로그: $LOG_FILE)"

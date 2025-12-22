@@ -6,7 +6,7 @@ set -euo pipefail
 # - ENABLE_HARBOR=true 인 경우에만 동작합니다. (배포 여부와 무관하게 “Harbor를 쓸 거면 true”)
 #
 # 산출물:
-# - scripts/gitops/.secrets/harbor_robot.json  (username/password 포함, 커밋 금지)
+# - ec2-setup/scripts/gitops/.secrets/harbor_robot.json  (username/password 포함, 커밋 금지)
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -40,7 +40,7 @@ admin_pass="${HARBOR_ADMIN_PASSWORD:-}"
 if [[ -z "${admin_pass:-}" && -f "$SCRIPT_DIR/.secrets/harbor_admin_password" ]]; then
   admin_pass="$(cat "$SCRIPT_DIR/.secrets/harbor_admin_password")"
 fi
-[[ -n "${admin_pass:-}" ]] || die "HARBOR_ADMIN_PASSWORD가 비어 있습니다. (scripts/gitops/config.env에 입력하거나 scripts/gitops/.secrets/harbor_admin_password를 준비하세요)"
+[[ -n "${admin_pass:-}" ]] || die "HARBOR_ADMIN_PASSWORD가 비어 있습니다. (ec2-setup/scripts/gitops/config.env에 입력하거나 ec2-setup/scripts/gitops/.secrets/harbor_admin_password를 준비하세요)"
 
 base="$(harbor_api_base_url)"
 log "Harbor API Base URL: $base"
@@ -60,7 +60,7 @@ if [[ -f "$robot_file" ]]; then
   existing_project="$(jq -r '.project // empty' "$robot_file" 2>/dev/null || true)"
   existing_user="$(jq -r '.username // empty' "$robot_file" 2>/dev/null || true)"
   if [[ -n "${existing_project:-}" && "$existing_project" == "$project" && -n "${existing_user:-}" ]]; then
-    log "기존 로봇 계정 정보를 재사용합니다: scripts/gitops/.secrets/harbor_robot.json"
+    log "기존 로봇 계정 정보를 재사용합니다: ec2-setup/scripts/gitops/.secrets/harbor_robot.json"
     log "완료 (로그: $LOG_FILE)"
     exit 0
   fi
@@ -152,5 +152,5 @@ robot_password="$(jq -r '.secret // empty' "$robot_resp_file")"
 robot_json="$(jq -n --arg project "$project" --arg u "$robot_username" --arg p "$robot_password" '{project:$project, username:$u, password:$p}')"
 write_secret_file "$robot_file" "$robot_json"
 
-log "로봇 계정 저장 완료: scripts/gitops/.secrets/harbor_robot.json"
+log "로봇 계정 저장 완료: ec2-setup/scripts/gitops/.secrets/harbor_robot.json"
 log "완료 (로그: $LOG_FILE)"

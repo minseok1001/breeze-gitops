@@ -71,13 +71,13 @@ fi
 
 # 상태 파일/시크릿 체크(있으면 연동이 더 쉬움)
 if [[ -f "$SCRIPT_DIR/.state/gitlab_demo_app_project.json" ]]; then
-  log "GitLab 데모 프로젝트 상태 파일: scripts/gitops/.state/gitlab_demo_app_project.json"
+  log "GitLab 데모 프로젝트 상태 파일: ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json"
 fi
 if [[ -f "$SCRIPT_DIR/.secrets/harbor_robot.json" ]]; then
-  log "Harbor 로봇 계정 파일: scripts/gitops/.secrets/harbor_robot.json"
+  log "Harbor 로봇 계정 파일: ec2-setup/scripts/gitops/.secrets/harbor_robot.json"
 fi
 if [[ -f "$SCRIPT_DIR/.secrets/jenkins_job_token" ]]; then
-  log "Jenkins 잡 토큰 파일: scripts/gitops/.secrets/jenkins_job_token"
+  log "Jenkins 잡 토큰 파일: ec2-setup/scripts/gitops/.secrets/jenkins_job_token"
 fi
 
 VERIFY_TRIGGER_BUILD="${VERIFY_TRIGGER_BUILD:-false}"

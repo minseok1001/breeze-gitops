@@ -45,7 +45,7 @@ if [[ -z "${GITLAB_TOKEN:-}" ]]; then
     hint_base="http://${SERVER_IP}:${GITLAB_HTTP_PORT:-8080}"
   fi
   hint_base="$(normalize_url "$hint_base")"
-  die "GITLAB_TOKEN이 비어 있습니다. GitLab Personal Access Token(api scope)을 생성해 scripts/gitops/config.env에 입력하세요.\n예) ${hint_base}/-/user_settings/personal_access_tokens"
+  die "GITLAB_TOKEN이 비어 있습니다. GitLab Personal Access Token(api scope)을 생성해 ec2-setup/scripts/gitops/config.env에 입력하세요.\n예) ${hint_base}/-/user_settings/personal_access_tokens"
 fi
 
 harbor_registry="${HARBOR_REGISTRY_HOSTPORT:-}"
@@ -124,7 +124,7 @@ elif [[ "$project_http" == "403" ]]; then
   warn "GitLab 프로젝트 조회가 403(FORBIDDEN) 입니다."
   warn "가장 흔한 원인: GITLAB_TOKEN이 'api' scope가 아니라서 프로젝트 API 권한이 부족한 경우"
   warn "대안:"
-  warn "  1) GitLab에서 Personal Access Token을 새로 만들고(scope: api 체크) scripts/gitops/config.env에 반영"
+  warn "  1) GitLab에서 Personal Access Token을 새로 만들고(scope: api 체크) ec2-setup/scripts/gitops/config.env에 반영"
   warn "  2) 토큰 사용자(root 등)가 해당 네임스페이스에 프로젝트 생성 권한이 있는지 확인"
   warn "응답(body) 일부:"
   head -c 500 "$tmp_resp" 2>/dev/null || true
@@ -216,5 +216,5 @@ gitlab_api POST "/projects/${project_id}/repository/commits" \
 
 log "완료"
 log "프로젝트: $(echo "$project_json" | jq -r '.web_url')"
-log "상태 파일: scripts/gitops/.state/gitlab_demo_app_project.json"
+log "상태 파일: ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json"
 log "완료 (로그: $LOG_FILE)"

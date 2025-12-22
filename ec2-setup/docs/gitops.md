@@ -25,7 +25,7 @@
 - Ubuntu 24.04 EC2
 - `sudo` 가능
 - 스크립트는 기본적으로 “서비스가 설치된 EC2에서 실행”을 가정합니다. (기본 `*_API_URL=http://127.0.0.1:<port>`)  
-  다른 곳(로컬 PC 등)에서 실행하면 `scripts/gitops/config.env`의 `*_API_URL`을 외부 도메인으로 바꿔야 합니다.
+  다른 곳(로컬 PC 등)에서 실행하면 `ec2-setup/scripts/gitops/config.env`의 `*_API_URL`을 외부 도메인으로 바꿔야 합니다.
 - (권장) Route53 + ALB 도메인
   - `gitops-gitlab.breezelab.io`
   - `gitops-harbor.breezelab.io`
@@ -59,14 +59,14 @@ AWS 콘솔에서 설정하는 위치:
 1) 설정 파일 확인/수정
 
 ```bash
-vi scripts/gitops/config.env
+vi ec2-setup/scripts/gitops/config.env
 ```
 
-> `scripts/gitops/config.env`는 기본으로 제공되며(gitignore 대상), 필요한 값만 채워서 사용합니다.  
+> `ec2-setup/scripts/gitops/config.env`는 기본으로 제공되며(gitignore 대상), 필요한 값만 채워서 사용합니다.  
 > 예시 파일로 “초기화”하고 싶으면 아래를 실행하세요.
 >
 > ```bash
-> cp scripts/gitops/config.env.example scripts/gitops/config.env
+> cp ec2-setup/scripts/gitops/config.env.example ec2-setup/scripts/gitops/config.env
 > ```
 
 설정에서 “최소로 꼭 채워야 하는 값”만 뽑으면 보통 아래입니다.
@@ -78,13 +78,13 @@ vi scripts/gitops/config.env
 2) 사전 점검(필수 패키지 자동 설치 포함)
 
 ```bash
-bash scripts/gitops/01_preflight.sh
+bash ec2-setup/scripts/gitops/01_preflight.sh
 ```
 
 3) Docker 설치(EC2에 Docker가 없으면)
 
 ```bash
-bash scripts/gitops/02_install_docker.sh
+bash ec2-setup/scripts/gitops/02_install_docker.sh
 ```
 
 > Docker 설치 직후에는 현재 세션에 `docker` 그룹이 반영되지 않아 `docker ps`가 실패할 수 있습니다.  
@@ -96,21 +96,21 @@ bash scripts/gitops/02_install_docker.sh
 특히 다른 방식으로 설치해둔 서비스가 있으면, 여기서 Docker/설정이 덮여 충돌할 수 있습니다.
 
 ```bash
-bash scripts/gitops/03_deploy_gitlab.sh
-bash scripts/gitops/04_deploy_harbor.sh
-bash scripts/gitops/05_deploy_jenkins.sh
+bash ec2-setup/scripts/gitops/03_deploy_gitlab.sh
+bash ec2-setup/scripts/gitops/04_deploy_harbor.sh
+bash ec2-setup/scripts/gitops/05_deploy_jenkins.sh
 ```
 
 > `04_deploy_harbor.sh`는 기본값으로 Harbor 오프라인 installer(v2.14.1)를 GitHub에서 다운로드해 설치합니다.  
-> 폐쇄망이면 `scripts/gitops/config.env`의 `HARBOR_OFFLINE_TGZ_PATH`에 tgz 파일 경로를 직접 지정하세요.
+> 폐쇄망이면 `ec2-setup/scripts/gitops/config.env`의 `HARBOR_OFFLINE_TGZ_PATH`에 tgz 파일 경로를 직접 지정하세요.
 
 5) 파이프라인 연동(핵심)
 
 ```bash
-bash scripts/gitops/06_setup_harbor_project.sh   # Harbor 프로젝트 + robot 생성
-bash scripts/gitops/07_seed_demo_app_repo.sh     # GitLab 데모 리포 생성/시드(Dockerfile/Jenkinsfile)
-bash scripts/gitops/08_setup_jenkins_job.sh      # Jenkins 크리덴셜 + 파이프라인 Job 생성
-bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins 트리거 연결
+bash ec2-setup/scripts/gitops/06_setup_harbor_project.sh   # Harbor 프로젝트 + robot 생성
+bash ec2-setup/scripts/gitops/07_seed_demo_app_repo.sh     # GitLab 데모 리포 생성/시드(Dockerfile/Jenkinsfile)
+bash ec2-setup/scripts/gitops/08_setup_jenkins_job.sh      # Jenkins 크리덴셜 + 파이프라인 Job 생성
+bash ec2-setup/scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins 트리거 연결
 ```
 
 > `07_seed_demo_app_repo.sh`가 만드는 `Jenkinsfile`은 `git rev-parse` 같은 git CLI를 쓰지 않고, Jenkins가 제공하는 `GIT_COMMIT` 환경변수로 이미지 태그를 만듭니다.  
@@ -131,15 +131,15 @@ bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins �
 403으로 실패하는 경우(가장 흔함):
 - Jenkins 보안 설정에서 anonymous가 `job/*`에 접근할 수 없으면, 토큰 URL을 호출해도 **응답이 403**으로 떨어질 수 있습니다.
 - GitLab은 2xx가 아니면 Webhook을 실패로 기록하므로, 이 경우 아래 중 하나로 해결합니다.
-  - (권장, PoC) `scripts/gitops/config.env`에서 `JENKINS_WEBHOOK_USE_BASIC_AUTH="true"`로 바꾸고, `JENKINS_USER/JENKINS_API_TOKEN`을 채운 뒤 09를 다시 실행  
+  - (권장, PoC) `ec2-setup/scripts/gitops/config.env`에서 `JENKINS_WEBHOOK_USE_BASIC_AUTH="true"`로 바꾸고, `JENKINS_USER/JENKINS_API_TOKEN`을 채운 뒤 09를 다시 실행  
     - 단점: Webhook URL에 토큰이 포함되어 GitLab 설정 화면에서 노출됩니다(운영 반입 금지).
   - (대안) Build Authorization Token Root Plugin 설치 후 `JENKINS_WEBHOOK_USE_BUILD_BY_TOKEN="true"` 사용
 
 필수 조건/준비물:
 - GitLab API 토큰: `GITLAB_TOKEN` (scope: `api`)
 - Jenkins 외부 접속 URL: `JENKINS_EXTERNAL_URL` (GitLab이 호출할 수 있어야 함)
-- 잡 토큰 파일: `scripts/gitops/.secrets/jenkins_job_token` (08에서 자동 생성)
-- 프로젝트 상태 파일: `scripts/gitops/.state/gitlab_demo_app_project.json` (07에서 생성)
+- 잡 토큰 파일: `ec2-setup/scripts/gitops/.secrets/jenkins_job_token` (08에서 자동 생성)
+- 프로젝트 상태 파일: `ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json` (07에서 생성)
 
 문제가 생기면 이렇게 확인하세요:
 - GitLab → 프로젝트 → `Settings` → `Webhooks` → `Test`로 호출 결과 확인
@@ -147,14 +147,14 @@ bash scripts/gitops/09_setup_gitlab_webhook.sh   # GitLab Webhook → Jenkins �
 
 각 단계가 만들어내는 “산출물”을 알고 있으면 재실행/복구가 쉬워집니다.
 
-- 06 실행 후: `scripts/gitops/.secrets/harbor_robot.json` (Harbor robot 계정)
-- 07 실행 후: `scripts/gitops/.state/gitlab_demo_app_project.json` (데모 리포 정보)
-- 08 실행 후: `scripts/gitops/.secrets/jenkins_job_token` (Webhook 트리거 토큰)
+- 06 실행 후: `ec2-setup/scripts/gitops/.secrets/harbor_robot.json` (Harbor robot 계정)
+- 07 실행 후: `ec2-setup/scripts/gitops/.state/gitlab_demo_app_project.json` (데모 리포 정보)
+- 08 실행 후: `ec2-setup/scripts/gitops/.secrets/jenkins_job_token` (Webhook 트리거 토큰)
 
 6) 검증
 
 ```bash
-bash scripts/gitops/10_verify.sh
+bash ec2-setup/scripts/gitops/10_verify.sh
 ```
 
 ---
@@ -165,19 +165,19 @@ bash scripts/gitops/10_verify.sh
 각 단계는 내부에서 `ENABLE_*` 값을 확인해 자동 스킵됩니다.
 
 ```bash
-sudo bash scripts/gitops/00_run_all.sh
+sudo bash ec2-setup/scripts/gitops/00_run_all.sh
 ```
 
 실행 로그는 아래에 남습니다.
 
-- `scripts/gitops/.logs/00_run_all_*.log`
+- `ec2-setup/scripts/gitops/.logs/00_run_all_*.log`
 
 ---
 
 ## 2) GitLab 토큰은 어디서 구하나?
 
 - `07_seed_demo_app_repo.sh`/`09_setup_gitlab_webhook.sh`는 GitLab API 호출이 필요해서 `GITLAB_TOKEN`이 필요합니다.
-- GitLab에서 Personal Access Token(PAT)을 만들고, `scripts/gitops/config.env`에 넣어주시면 됩니다.
+- GitLab에서 Personal Access Token(PAT)을 만들고, `ec2-setup/scripts/gitops/config.env`에 넣어주시면 됩니다.
 
 1) GitLab 토큰 생성 페이지로 이동
 
@@ -188,7 +188,7 @@ sudo bash scripts/gitops/00_run_all.sh
 - Name: `bootstrap`
 - Scopes: `api` (필수)
 
-3) 생성된 토큰을 `scripts/gitops/config.env`에 입력
+3) 생성된 토큰을 `ec2-setup/scripts/gitops/config.env`에 입력
 
 ```bash
 GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxx"
@@ -202,7 +202,7 @@ GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxx"
 
 - `08_setup_jenkins_job.sh`는 Jenkins API 호출이 필요해서 `JENKINS_USER`/`JENKINS_API_TOKEN`이 필요합니다.
 - Jenkins UI에서 최초 1회 설정이 안 끝났다면, 먼저 웹에서 초기 설정을 완료해 주세요(플러그인 포함).
-- Jenkins UI → 사용자 → `Configure` → `API Token`에서 생성 후 `scripts/gitops/config.env`에 입력하세요.
+- Jenkins UI → 사용자 → `Configure` → `API Token`에서 생성 후 `ec2-setup/scripts/gitops/config.env`에 입력하세요.
 
 추가로, `08_setup_jenkins_job.sh`는 자동화를 위해 Jenkins Script Console(`.../script`)을 사용합니다.  
 보안 정책상 Script Console이 막혀있는 Jenkins라면 이 단계는 실패할 수 있고, 그 경우엔 UI에서 수동으로 Job/크리덴셜을 만들어야 합니다.

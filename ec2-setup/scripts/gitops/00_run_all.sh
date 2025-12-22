@@ -6,7 +6,7 @@ set -euo pipefail
 # - 각 단계는 내부에서 ENABLE_* 값을 확인해 자동 스킵됩니다.
 #
 # 사용:
-#   sudo bash scripts/gitops/00_run_all.sh
+#   sudo bash ec2-setup/scripts/gitops/00_run_all.sh
 #
 # 주의:
 # - GitLab/Harbor/Jenkins가 이미 설치된 환경이면 03~05 단계가 스킵되도록 ENABLE_* 또는 각 스크립트 내 체크에 맡깁니다.

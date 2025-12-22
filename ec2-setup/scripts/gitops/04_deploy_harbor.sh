@@ -22,7 +22,7 @@ log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "ENABLE_HARBOR=${ENABLE_HARBOR:-false}"
 
 if ! is_true "${ENABLE_HARBOR:-false}"; then
-  log "ENABLE_HARBOR=false → Harbor 배포를 건너뜁니다. (scripts/gitops/config.env에서 ENABLE_HARBOR=\"true\"로 변경)"
+  log "ENABLE_HARBOR=false → Harbor 배포를 건너뜁니다. (ec2-setup/scripts/gitops/config.env에서 ENABLE_HARBOR=\"true\"로 변경)"
   exit 0
 fi
 
@@ -90,7 +90,7 @@ if [[ ! -f "$HARBOR_OFFLINE_TGZ_PATH" ]]; then
     warn "다운로드에 실패했습니다. (폐쇄망/방화벽/프록시 이슈일 수 있음)"
     warn "대안:"
     warn "  1) 다른 곳에서 tgz를 다운로드하여 서버로 복사"
-    warn "  2) scripts/gitops/config.env에 HARBOR_OFFLINE_TGZ_PATH로 로컬 파일 경로 지정"
+    warn "  2) ec2-setup/scripts/gitops/config.env에 HARBOR_OFFLINE_TGZ_PATH로 로컬 파일 경로 지정"
     die "Harbor 오프라인 installer 다운로드 실패"
   fi
 fi
@@ -101,10 +101,10 @@ fi
 if [[ -z "${HARBOR_ADMIN_PASSWORD:-}" ]]; then
   HARBOR_ADMIN_PASSWORD="$(random_password)"
   write_secret_file "$SCRIPT_DIR/.secrets/harbor_admin_password" "$HARBOR_ADMIN_PASSWORD"
-  log "Harbor admin 비밀번호를 생성하여 저장했습니다: scripts/gitops/.secrets/harbor_admin_password"
+  log "Harbor admin 비밀번호를 생성하여 저장했습니다: ec2-setup/scripts/gitops/.secrets/harbor_admin_password"
 else
   write_secret_file "$SCRIPT_DIR/.secrets/harbor_admin_password" "$HARBOR_ADMIN_PASSWORD"
-  log "Harbor admin 비밀번호를 저장했습니다: scripts/gitops/.secrets/harbor_admin_password"
+  log "Harbor admin 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/harbor_admin_password"
 fi
 
 log "데이터 디렉토리 준비: $DATA_DIR/harbor"
@@ -329,5 +329,5 @@ while [[ $(date +%s) -lt $deadline ]]; do
 done
 
 log "Harbor URL: $HARBOR_URL"
-log "admin 비밀번호 파일: scripts/gitops/.secrets/harbor_admin_password"
+log "admin 비밀번호 파일: ec2-setup/scripts/gitops/.secrets/harbor_admin_password"
 log "완료 (로그: $LOG_FILE)"
