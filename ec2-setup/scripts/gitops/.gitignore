@@ -1,4 +1,4 @@
-
+config.env
 .secrets/
 .state/
 .logs/
