@@ -192,6 +192,24 @@ if [[ ! -s "$pw_file" ]]; then
   fi
 fi
 
+# 능동적 자동화: GitLab PAT 자동 생성
+if [[ -z "${GITLAB_TOKEN:-}" && -s "$pw_file" ]]; then
+  log "GitLab PAT 자동 생성 시도"
+  root_pw="$(cat "$pw_file")"
+  gitlab_api_url="${GITLAB_API_URL:-http://127.0.0.1:${GITLAB_HTTP_PORT}}"
+  token_response="$(curl -s -X POST "${gitlab_api_url}/api/v4/users/1/personal_access_tokens" \
+    -H "Content-Type: application/json" \
+    -u "root:${root_pw}" \
+    -d '{"name":"bootstrap","scopes":["api"],"expires_at":"'"$(date -d '+1 year' +%Y-%m-%d)"'"}' || true)"
+  generated_token="$(echo "$token_response" | jq -r '.token // empty' 2>/dev/null || true)"
+  if [[ -n "${generated_token:-}" ]]; then
+    echo "GITLAB_TOKEN=\"$generated_token\"" >> "$SCRIPT_DIR/config.env"
+    log "GitLab PAT를 생성하여 config.env에 추가했습니다."
+  else
+    warn "GitLab PAT 자동 생성 실패. 수동 생성 필요."
+  fi
+fi
+
 log "GitLab URL: http://${SERVER_IP}:${GITLAB_HTTP_PORT}"
 if [[ -s "$pw_file" ]]; then
   log "root 비밀번호 파일: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"

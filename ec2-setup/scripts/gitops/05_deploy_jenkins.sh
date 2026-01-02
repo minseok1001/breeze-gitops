@@ -144,5 +144,41 @@ if [[ ! -s "$pw_file" ]]; then
   fi
 fi
 
+# 능동적 자동화: Jenkins 초기 설정 자동화
+if [[ -s "$pw_file" && -z "${JENKINS_USER:-}" ]]; then
+  log "Jenkins 초기 설정 자동화 시도"
+  initial_pw="$(cat "$pw_file")"
+  jenkins_api_url="${JENKINS_API_URL:-http://127.0.0.1:${JENKINS_HTTP_PORT}}"
+  
+  # 초기 설정 완료 (admin 계정 생성)
+  setup_response="$(curl -s -X POST "${jenkins_api_url}/setupWizard/completeSetup" \
+    -d "rootUrl=${jenkins_api_url}&adminAddress=&Jenkins-Crumb=&json=%7B%22rootUrl%22%3A%22${jenkins_api_url}%22%2C%22adminAddress%22%3A%22%22%7D&Submit=Save" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --cookie-jar /tmp/jenkins_cookies.txt --cookie /tmp/jenkins_cookies.txt || true)"
+  
+  # admin 사용자 생성 및 API 토큰 발급 (Groovy 스크립트 사용)
+  groovy_script="
+  import jenkins.model.*
+  import hudson.security.*
+  def instance = Jenkins.getInstance()
+  def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+  hudsonRealm.createAccount('admin', '${initial_pw}')
+  instance.setSecurityRealm(hudsonRealm)
+  instance.save()
+  def user = User.get('admin', false)
+  def token = user.getProperty(jenkins.security.ApiTokenProperty.class).generateNewToken('bootstrap').plainValue
+  println token
+  "
+  api_token="$(docker exec jenkins bash -c "echo \"$groovy_script\" | java -jar /var/jenkins_home/war/WEB-INF/lib/jenkins-core-*.jar -s http://localhost:8080/ script" 2>/dev/null || true)"
+  
+  if [[ -n "${api_token:-}" ]]; then
+    echo "JENKINS_USER=\"admin\"" >> "$SCRIPT_DIR/config.env"
+    echo "JENKINS_API_TOKEN=\"$api_token\"" >> "$SCRIPT_DIR/config.env"
+    log "Jenkins admin 계정 및 API 토큰을 생성하여 config.env에 추가했습니다."
+  else
+    warn "Jenkins 초기 설정 자동화 실패. 수동 설정 필요."
+  fi
+fi
+
 log "Jenkins URL: $JENKINS_URL"
 log "완료 (로그: $LOG_FILE)"
