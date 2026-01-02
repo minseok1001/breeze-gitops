@@ -30,10 +30,38 @@ if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
   aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "${AWS_REGION:-us-east-1}" || warn "EKS kubeconfig 업데이트 실패. 수동 설정 필요."
 fi
 
+# Kubernetes 프로바이더 자동 감지 함수
+detect_provider() {
+  log "Kubernetes 프로바이더 자동 감지 중..."
+  local provider_id
+  provider_id=$(kubectl get nodes -o jsonpath='{.items[0].spec.providerID}' 2>/dev/null || echo "")
+
+  if [[ "$provider_id" =~ ^aws ]]; then
+    echo "aws"
+  elif [[ "$provider_id" =~ ^gce ]]; then
+    echo "gcp"
+  elif [[ "$provider_id" =~ ^azure ]]; then
+    echo "azure"
+  else
+    echo "generic"
+  fi
+}
+
 log "사전 점검 시작"
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "KUBECONFIG=${KUBECONFIG:-<default>}"
 log "KUBE_CONTEXT=${KUBE_CONTEXT:-<current>}"
+
+# 프로바이더 감지 및 설정
+KUBERNETES_PROVIDER="${KUBERNETES_PROVIDER:-$(detect_provider)}"
+log "감지된 프로바이더: $KUBERNETES_PROVIDER"
+
+# config.env에 저장 (기존 값 덮어쓰기 또는 추가)
+if grep -q "^KUBERNETES_PROVIDER=" "$LOADED_CONFIG_FILE" 2>/dev/null; then
+  sed -i "s/^KUBERNETES_PROVIDER=.*/KUBERNETES_PROVIDER=\"$KUBERNETES_PROVIDER\"/" "$LOADED_CONFIG_FILE"
+else
+  echo "KUBERNETES_PROVIDER=\"$KUBERNETES_PROVIDER\"" >> "$LOADED_CONFIG_FILE"
+fi
 
 log "kubectl 버전 확인"
 kubectl version --client --short 2>/dev/null || kubectl version --client || true
