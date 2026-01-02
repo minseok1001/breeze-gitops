@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 00) 전체 실행 스크립트(EKS)
+# 00) 전체 실행 스크립트(K8s)
 # - Gateway API + Argo CD 설치를 한 번에 수행합니다.
 #
 # 사용:
-#   sudo bash eks-setup/scripts/00_run_all.sh
+#   sudo bash k8s-setup/scripts/00_run_all.sh
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091

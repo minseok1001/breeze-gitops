@@ -3,12 +3,12 @@
 이 저장소는 다음 두 흐름을 분리해서 제공합니다.
 
 - **EC2 DevOps 체인**: GitLab → Jenkins → Harbor (연동까지 자동화)
-- **EKS 설치**: Gateway API CRD + Argo CD
+- **K8s 설치**: Gateway API CRD + Argo CD
 
 ## 디렉토리 구조
 
 - `ec2-setup/` : EC2 DevOps 체인 스크립트/문서
-- `eks-setup/` : EKS Gateway API + Argo CD 스크립트/문서
+- `k8s-setup/` : Kubernetes Gateway API + Argo CD 스크립트/문서
 
 ## EC2 빠른 시작
 
@@ -61,13 +61,13 @@ sudo bash ec2-setup/scripts/gitops/00_run_all.sh
 - `ec2-setup/docs/gitops.md` : 전체 실행 가이드(짧게)
 - `ec2-setup/scripts/gitops/README.md` : 스크립트 설명/주의사항
 
-## EKS 빠른 시작
+## K8s 빠른 시작
 
 ```bash
-vi eks-setup/scripts/config.env
-sudo bash eks-setup/scripts/00_run_all.sh
+vi k8s-setup/scripts/config.env
+sudo bash k8s-setup/scripts/00_run_all.sh
 ```
 
-## EKS 문서
+## K8s 문서
 
-- `eks-setup/docs/eks.md`
+- `k8s-setup/docs/k8s.md`

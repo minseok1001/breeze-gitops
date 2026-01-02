@@ -76,7 +76,7 @@ if kubectl_cmd -n "$ns" get secret argocd-initial-admin-secret >/dev/null 2>&1; 
   pw="$(kubectl_cmd -n "$ns" get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)"
   if [[ -n "${pw:-}" ]]; then
     write_secret_file "$SCRIPT_DIR/.secrets/argocd_initial_admin_password" "$pw"
-    log "초기 admin 비밀번호를 저장했습니다: eks-setup/scripts/.secrets/argocd_initial_admin_password"
+    log "초기 admin 비밀번호를 저장했습니다: k8s-setup/scripts/.secrets/argocd_initial_admin_password"
   else
     warn "초기 admin 비밀번호 추출에 실패했습니다."
   fi
