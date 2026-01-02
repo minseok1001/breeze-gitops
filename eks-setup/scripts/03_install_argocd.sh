@@ -28,6 +28,12 @@ if [[ -n "${KUBECONFIG:-}" && ! -f "${KUBECONFIG}" ]]; then
   die "KUBECONFIG 파일이 없습니다: $KUBECONFIG"
 fi
 
+# 능동적 자동화: Argo CD CLI 설치 (없으면)
+if ! command -v argocd >/dev/null 2>&1; then
+  log "Argo CD CLI 자동 설치"
+  curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && chmod +x /tmp/argocd && sudo mv /tmp/argocd /usr/local/bin/ || warn "Argo CD CLI 설치 실패."
+fi
+
 ns="${ARGOCD_NAMESPACE:-argocd}"
 version="${ARGOCD_VERSION:-v2.12.6}"
 manifest_path="${ARGOCD_MANIFEST_PATH:-}"
@@ -76,6 +82,12 @@ if kubectl_cmd -n "$ns" get secret argocd-initial-admin-secret >/dev/null 2>&1; 
   fi
 else
   warn "argocd-initial-admin-secret을 찾지 못했습니다."
+fi
+
+# 능동적 자동화: Argo CD 초기 로그인
+if command -v argocd >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/.secrets/argocd_initial_admin_password" ]]; then
+  log "Argo CD 초기 로그인 시도"
+  argocd login "$(kubectl_cmd -n "$ns" get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "localhost:8080")" --username admin --password "$(cat "$SCRIPT_DIR/.secrets/argocd_initial_admin_password")" --insecure || warn "Argo CD 로그인 실패."
 fi
 
 log "Argo CD 설치 완료 (로그: $LOG_FILE)"

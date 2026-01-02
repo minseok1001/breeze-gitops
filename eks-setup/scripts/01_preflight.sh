@@ -23,6 +23,13 @@ if [[ -n "${KUBECONFIG:-}" && ! -f "${KUBECONFIG}" ]]; then
   die "KUBECONFIG 파일이 없습니다: $KUBECONFIG"
 fi
 
+# 능동적 자동화: EKS 클러스터 kubeconfig 자동 설정
+if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
+  require_cmd aws
+  log "EKS 클러스터 kubeconfig 자동 업데이트: $EKS_CLUSTER_NAME"
+  aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "${AWS_REGION:-us-east-1}" || warn "EKS kubeconfig 업데이트 실패. 수동 설정 필요."
+fi
+
 log "사전 점검 시작"
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "KUBECONFIG=${KUBECONFIG:-<default>}"
