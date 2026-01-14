@@ -24,6 +24,17 @@ validate_bool "ENABLE_JENKINS" "${ENABLE_JENKINS:-false}"
 log "설정 파일: ${LOADED_CONFIG_FILE:-unknown}"
 log "ENABLE_JENKINS=${ENABLE_JENKINS:-false}"
 
+upsert_config() {
+  local key="$1"
+  local value="$2"
+  local file="$SCRIPT_DIR/config.env"
+  if [[ -f "$file" ]] && grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$file"
+  else
+    echo "${key}=\"${value}\"" >> "$file"
+  fi
+}
+
 if ! is_true "${ENABLE_JENKINS:-false}"; then
   log "ENABLE_JENKINS=false → Jenkins 배포를 건너뜁니다. (ec2-setup/scripts/gitops/config.env에서 ENABLE_JENKINS=\"true\"로 변경)"
   exit 0
@@ -32,6 +43,7 @@ fi
 require_cmd docker
 require_cmd curl
 require_cmd sudo
+require_cmd jq
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
@@ -60,11 +72,66 @@ validate_bool "JENKINS_ENABLE_DOCKER_SOCKET" "$JENKINS_ENABLE_DOCKER_SOCKET"
 JENKINS_URL="http://${SERVER_IP}:${JENKINS_HTTP_PORT}"
 log "Jenkins URL(내부 확인용): $JENKINS_URL"
 
+jenkins_admin_user="${JENKINS_USER:-admin}"
+jenkins_admin_pw="${JENKINS_ADMIN_PASSWORD:-}"
+admin_pw_file="$SCRIPT_DIR/.secrets/jenkins_admin_password"
+if [[ -n "${jenkins_admin_pw:-}" ]]; then
+  write_secret_file "$admin_pw_file" "$jenkins_admin_pw"
+else
+  if [[ -f "$admin_pw_file" ]]; then
+    jenkins_admin_pw="$(cat "$admin_pw_file")"
+  else
+    jenkins_admin_pw="$(random_password)"
+    write_secret_file "$admin_pw_file" "$jenkins_admin_pw"
+  fi
+fi
+[[ -n "${jenkins_admin_pw:-}" ]] || die "Jenkins admin 비밀번호가 비어 있습니다."
+log "Jenkins admin 비밀번호 파일: ec2-setup/scripts/gitops/.secrets/jenkins_admin_password"
+
+init_dir="$SCRIPT_DIR/.state/jenkins_init"
+mkdir -p "$init_dir"
+init_file="$init_dir/01_security.groovy"
+cat > "$init_file" <<'EOF'
+import jenkins.model.*
+import hudson.security.*
+
+def instance = Jenkins.get()
+def adminId = System.getenv("JENKINS_ADMIN_ID") ?: "admin"
+def adminPw = System.getenv("JENKINS_ADMIN_PASSWORD") ?: "admin"
+
+def realm = instance.getSecurityRealm()
+if (!(realm instanceof HudsonPrivateSecurityRealm)) {
+  realm = new HudsonPrivateSecurityRealm(false)
+  instance.setSecurityRealm(realm)
+}
+
+if (realm.getUser(adminId) == null) {
+  realm.createAccount(adminId, adminPw)
+}
+
+def strategy = instance.getAuthorizationStrategy()
+if (!(strategy instanceof FullControlOnceLoggedInAuthorizationStrategy)) {
+  def full = new FullControlOnceLoggedInAuthorizationStrategy()
+  full.setAllowAnonymousRead(false)
+  instance.setAuthorizationStrategy(full)
+}
+
+instance.save()
+EOF
+chmod 644 "$init_file" || true
+
 log "기존 Jenkins 확인"
 code="$(curl -s -o /dev/null -w "%{http_code}" "${JENKINS_URL}/login" || true)"
+need_api_token="false"
+if [[ -z "${JENKINS_USER:-}" || -z "${JENKINS_API_TOKEN:-}" ]]; then
+  need_api_token="true"
+fi
 if [[ "$code" =~ ^2|^3|^4 ]]; then
-  log "Jenkins가 이미 응답합니다(HTTP $code). 배포를 스킵합니다."
-  exit 0
+  if [[ "$need_api_token" == "false" ]]; then
+    log "Jenkins가 이미 응답합니다(HTTP $code). 배포를 스킵합니다."
+    exit 0
+  fi
+  log "Jenkins가 이미 응답합니다(HTTP $code). 자동 설정을 계속 진행합니다."
 fi
 
 if [[ "$JENKINS_PERSIST_DATA" == "true" ]]; then
@@ -88,23 +155,26 @@ services:
     image: ${JENKINS_IMAGE}
     container_name: jenkins
     restart: unless-stopped
+    environment:
+      - "JAVA_OPTS=-Djenkins.install.runSetupWizard=false"
+      - "JENKINS_ADMIN_ID=${jenkins_admin_user}"
+      - "JENKINS_ADMIN_PASSWORD=${jenkins_admin_pw}"
     ports:
       - "${JENKINS_HTTP_PORT}:8080"
 EOF
 
-if [[ "$JENKINS_PERSIST_DATA" == "true" || "$JENKINS_ENABLE_DOCKER_SOCKET" == "true" ]]; then
-  echo "    volumes:" >> "$COMPOSE_FILE"
-  if [[ "$JENKINS_PERSIST_DATA" == "true" ]]; then
-    echo "      - \"${DATA_DIR}/jenkins:/var/jenkins_home\"" >> "$COMPOSE_FILE"
-  fi
-  if [[ "$JENKINS_ENABLE_DOCKER_SOCKET" == "true" ]]; then
-    echo "      - \"/var/run/docker.sock:/var/run/docker.sock\"" >> "$COMPOSE_FILE"
-    # host의 docker CLI를 컨테이너에 마운트(환경에 따라 경로가 다를 수 있음)
-    if [[ -x /usr/bin/docker ]]; then
-      echo "      - \"/usr/bin/docker:/usr/bin/docker:ro\"" >> "$COMPOSE_FILE"
-    else
-      warn "/usr/bin/docker 경로가 없어 docker CLI 마운트를 건너뜁니다(컨테이너 내부에 docker CLI가 없으면 빌드가 실패할 수 있음)."
-    fi
+echo "    volumes:" >> "$COMPOSE_FILE"
+echo "      - \"${init_dir}:/var/jenkins_home/init.groovy.d:ro\"" >> "$COMPOSE_FILE"
+if [[ "$JENKINS_PERSIST_DATA" == "true" ]]; then
+  echo "      - \"${DATA_DIR}/jenkins:/var/jenkins_home\"" >> "$COMPOSE_FILE"
+fi
+if [[ "$JENKINS_ENABLE_DOCKER_SOCKET" == "true" ]]; then
+  echo "      - \"/var/run/docker.sock:/var/run/docker.sock\"" >> "$COMPOSE_FILE"
+  # host의 docker CLI를 컨테이너에 마운트(환경에 따라 경로가 다를 수 있음)
+  if [[ -x /usr/bin/docker ]]; then
+    echo "      - \"/usr/bin/docker:/usr/bin/docker:ro\"" >> "$COMPOSE_FILE"
+  else
+    warn "/usr/bin/docker 경로가 없어 docker CLI 마운트를 건너뜁니다(컨테이너 내부에 docker CLI가 없으면 빌드가 실패할 수 있음)."
   fi
 fi
 
@@ -144,39 +214,33 @@ if [[ ! -s "$pw_file" ]]; then
   fi
 fi
 
-# 능동적 자동화: Jenkins 초기 설정 자동화
-if [[ -s "$pw_file" && -z "${JENKINS_USER:-}" ]]; then
-  log "Jenkins 초기 설정 자동화 시도"
-  initial_pw="$(cat "$pw_file")"
-  jenkins_api_url="${JENKINS_API_URL:-http://127.0.0.1:${JENKINS_HTTP_PORT}}"
-  
-  # 초기 설정 완료 (admin 계정 생성)
-  setup_response="$(curl -s -X POST "${jenkins_api_url}/setupWizard/completeSetup" \
-    -d "rootUrl=${jenkins_api_url}&adminAddress=&Jenkins-Crumb=&json=%7B%22rootUrl%22%3A%22${jenkins_api_url}%22%2C%22adminAddress%22%3A%22%22%7D&Submit=Save" \
-    -H "Content-Type: application/x-www-form-urlencoded" \
-    --cookie-jar /tmp/jenkins_cookies.txt --cookie /tmp/jenkins_cookies.txt || true)"
-  
-  # admin 사용자 생성 및 API 토큰 발급 (Groovy 스크립트 사용)
-  groovy_script="
-  import jenkins.model.*
-  import hudson.security.*
-  def instance = Jenkins.getInstance()
-  def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-  hudsonRealm.createAccount('admin', '${initial_pw}')
-  instance.setSecurityRealm(hudsonRealm)
-  instance.save()
-  def user = User.get('admin', false)
-  def token = user.getProperty(jenkins.security.ApiTokenProperty.class).generateNewToken('bootstrap').plainValue
-  println token
-  "
-  api_token="$(docker exec jenkins bash -c "echo \"$groovy_script\" | java -jar /var/jenkins_home/war/WEB-INF/lib/jenkins-core-*.jar -s http://localhost:8080/ script" 2>/dev/null || true)"
-  
+jenkins_api_url="$(jenkins_api_base_url)"
+
+# 능동적 자동화: Jenkins API 토큰 자동 생성
+if [[ -z "${JENKINS_API_TOKEN:-}" ]]; then
+  log "Jenkins API 토큰 생성 시도"
+  crumb_header=""
+  if crumb_json="$(curl -fsS -u "${jenkins_admin_user}:${jenkins_admin_pw}" "${jenkins_api_url}/crumbIssuer/api/json" 2>/dev/null)"; then
+    crumb_field="$(echo "$crumb_json" | jq -r '.crumbRequestField // empty')"
+    crumb_value="$(echo "$crumb_json" | jq -r '.crumb // empty')"
+    if [[ -n "${crumb_field:-}" && -n "${crumb_value:-}" && "$crumb_field" != "null" && "$crumb_value" != "null" ]]; then
+      crumb_header="${crumb_field}: ${crumb_value}"
+    fi
+  fi
+
+  curl_args=( -s -u "${jenkins_admin_user}:${jenkins_admin_pw}" )
+  if [[ -n "${crumb_header:-}" ]]; then
+    curl_args+=( -H "$crumb_header" )
+  fi
+  token_resp="$(curl "${curl_args[@]}" -d "newTokenName=bootstrap" "${jenkins_api_url}/user/${jenkins_admin_user}/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken" 2>/dev/null || true)"
+  api_token="$(echo "$token_resp" | jq -r '.data.tokenValue // empty' 2>/dev/null || true)"
+
   if [[ -n "${api_token:-}" ]]; then
-    echo "JENKINS_USER=\"admin\"" >> "$SCRIPT_DIR/config.env"
-    echo "JENKINS_API_TOKEN=\"$api_token\"" >> "$SCRIPT_DIR/config.env"
-    log "Jenkins admin 계정 및 API 토큰을 생성하여 config.env에 추가했습니다."
+    upsert_config "JENKINS_USER" "$jenkins_admin_user"
+    upsert_config "JENKINS_API_TOKEN" "$api_token"
+    log "Jenkins admin 계정 및 API 토큰을 생성하여 config.env에 반영했습니다."
   else
-    warn "Jenkins 초기 설정 자동화 실패. 수동 설정 필요."
+    warn "Jenkins API 토큰 자동 생성 실패. 수동 설정이 필요할 수 있습니다."
   fi
 fi
 

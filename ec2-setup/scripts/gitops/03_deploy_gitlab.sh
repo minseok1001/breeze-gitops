@@ -27,6 +27,7 @@ fi
 
 require_cmd docker
 require_cmd curl
+require_cmd base64
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
@@ -53,15 +54,19 @@ GITLAB_APPLY_OMNIBUS_CONFIG="${GITLAB_APPLY_OMNIBUS_CONFIG:-false}"
 validate_bool "GITLAB_PERSIST_DATA" "$GITLAB_PERSIST_DATA"
 validate_bool "GITLAB_APPLY_OMNIBUS_CONFIG" "$GITLAB_APPLY_OMNIBUS_CONFIG"
 
+set_gitlab_root_password() {
+  local pw="$1"
+  local pw_b64
+  pw_b64="$(printf '%s' "$pw" | base64 | tr -d '\n')"
+  docker exec -e "PW_B64=${pw_b64}" gitlab gitlab-rails runner \
+    "require 'base64'; pw=Base64.decode64(ENV['PW_B64'] || ''); u=User.find_by_username('root'); u.password=pw; u.password_confirmation=pw; u.save!"
+}
+
 pw_file="$SCRIPT_DIR/.secrets/gitlab_root_password"
 if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
-  # 사용자가 직접 지정한 경우에만 env로 주입(그 외에는 GitLab 기본 동작을 최대한 그대로 둠)
-  write_secret_file "$pw_file" "$GITLAB_ROOT_PASSWORD"
-  log "GitLab root 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
-else
-  if [[ -f "$pw_file" ]]; then
-    log "기존 GitLab root 비밀번호 파일이 있습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
-  fi
+  log "GITLAB_ROOT_PASSWORD가 설정되어 있습니다."
+elif [[ -f "$pw_file" ]]; then
+  log "기존 GitLab root 비밀번호 파일이 있습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
 fi
 
 if [[ "$GITLAB_PERSIST_DATA" == "true" ]]; then
@@ -179,16 +184,40 @@ if ! [[ "$final_code" =~ ^2|^3 ]]; then
   die "GitLab 기동 실패 또는 매우 지연됨"
 fi
 
+if [[ -n "${GITLAB_ROOT_PASSWORD:-}" ]]; then
+  log "GITLAB_ROOT_PASSWORD가 설정되어 있어 root 비밀번호를 동기화합니다."
+  if set_gitlab_root_password "$GITLAB_ROOT_PASSWORD" >/dev/null 2>&1; then
+    log "root 비밀번호를 동기화했습니다."
+  else
+    warn "root 비밀번호 동기화에 실패했습니다. (현재 비밀번호가 다를 수 있습니다)"
+  fi
+  write_secret_file "$pw_file" "$GITLAB_ROOT_PASSWORD"
+  log "GitLab root 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
+fi
+
 if [[ ! -s "$pw_file" ]]; then
   log "GitLab 초기 root 비밀번호 추출 시도(출력 금지)"
-  extracted_pw="$(docker exec gitlab bash -lc "awk -F': ' '/Password:/{print \\$2; exit}' /etc/gitlab/initial_root_password 2>/dev/null || true" 2>/dev/null | tr -d '\r' || true)"
+  extracted_pw="$(docker exec gitlab bash -lc "awk -F': ' '/Password:/{print \$2; exit}' /etc/gitlab/initial_root_password 2>/dev/null || true" 2>/dev/null | tr -d '\r' || true)"
   if [[ -n "${extracted_pw:-}" ]]; then
     write_secret_file "$pw_file" "$extracted_pw"
     log "GitLab root 비밀번호를 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
   else
     warn "root 비밀번호를 자동으로 추출하지 못했습니다."
-    warn "필요 시 다음으로 확인하세요:"
-    warn "  docker exec -it gitlab bash -lc 'cat /etc/gitlab/initial_root_password'"
+    warn "GITLAB_ROOT_PASSWORD가 비어 있어 root 비밀번호 재설정을 시도합니다."
+    if ! command -v openssl >/dev/null 2>&1; then
+      warn "openssl이 없어 root 비밀번호 재설정을 진행할 수 없습니다."
+      warn "GITLAB_ROOT_PASSWORD를 config.env에 설정한 뒤 다시 실행하세요."
+    else
+      reset_pw="$(random_password)"
+      if set_gitlab_root_password "$reset_pw" >/dev/null 2>&1; then
+        write_secret_file "$pw_file" "$reset_pw"
+        log "root 비밀번호를 재설정하고 저장했습니다: ec2-setup/scripts/gitops/.secrets/gitlab_root_password"
+      else
+        warn "root 비밀번호 재설정에 실패했습니다."
+        warn "필요 시 다음으로 확인하세요:"
+        warn "  docker exec -it gitlab bash -lc 'cat /etc/gitlab/initial_root_password'"
+      fi
+    fi
   fi
 fi
 
